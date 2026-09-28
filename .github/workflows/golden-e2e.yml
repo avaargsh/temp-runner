@@ -1,0 +1,87 @@
+name: golden-e2e
+
+on:
+  workflow_dispatch:
+    inputs:
+      aiops_ref:
+        description: agentic-aiops ref
+        required: true
+        default: main
+      decision_ref:
+        description: agent-decision-lab ref
+        required: true
+        default: main
+      runtime_ref:
+        description: cloud-agent-runtime ref
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  golden:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout runner
+        uses: actions/checkout@v4
+
+      - name: Checkout agentic-aiops
+        uses: actions/checkout@v4
+        with:
+          repository: avaargsh/agentic-aiops
+          ref: ${{ inputs.aiops_ref }}
+          path: workspace/agentic-aiops
+
+      - name: Checkout agent-decision-lab
+        uses: actions/checkout@v4
+        with:
+          repository: avaargsh/agent-decision-lab
+          ref: ${{ inputs.decision_ref }}
+          path: workspace/agent-decision-lab
+
+      - name: Checkout cloud-agent-runtime
+        uses: actions/checkout@v4
+        with:
+          repository: avaargsh/cloud-agent-runtime
+          ref: ${{ inputs.runtime_ref }}
+          path: workspace/cloud-agent-runtime
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          install_only: true
+
+      - name: Create disposable cluster
+        working-directory: workspace/agentic-aiops
+        run: ./scripts/setup-golden-kind.sh
+
+      - name: Show cluster state
+        run: |
+          kubectl get nodes -o wide
+          kubectl -n golden-demo get all
+
+      - name: Validate source contracts
+        run: |
+          python -m pip install -U pip
+          pip install -e "workspace/agentic-aiops[dev]"
+          pytest -q workspace/agentic-aiops/tests/test_golden_demo_assets.py workspace/agentic-aiops/tests/test_live_remediation.py workspace/agentic-aiops/tests/test_live_temporal_contract.py
+
+      - name: Capture diagnostics
+        if: always()
+        run: |
+          mkdir -p artifacts
+          kubectl get nodes -o wide > artifacts/nodes.txt 2>&1 || true
+          kubectl -n golden-demo get all -o wide > artifacts/resources.txt 2>&1 || true
+          kubectl -n golden-demo get events --sort-by=.lastTimestamp > artifacts/events.txt 2>&1 || true
+          kubectl -n golden-demo logs deploy/prometheus > artifacts/prometheus.log 2>&1 || true
+          printf 'aiops_ref=%s\ndecision_ref=%s\nruntime_ref=%s\n' "${{ inputs.aiops_ref }}" "${{ inputs.decision_ref }}" "${{ inputs.runtime_ref }}" > artifacts/refs.txt
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-e2e-${{ github.run_id }}
+          path: artifacts/
+          retention-days: 7
