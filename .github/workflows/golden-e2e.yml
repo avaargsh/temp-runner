@@ -62,16 +62,52 @@ jobs:
           kubectl get nodes -o wide
           kubectl -n golden-demo get all
 
-      - name: Install source test dependencies
+      - name: Install source dependencies
         run: |
           python -m pip install -U pip
+          pip install -e "workspace/cloud-agent-runtime[temporal]"
+          pip install -e "workspace/agent-decision-lab"
           pip install -e "workspace/agentic-aiops[dev]"
+          curl -fsSL https://github.com/temporalio/cli/releases/download/v1.9.1/temporal_cli_1.9.1_linux_amd64.tar.gz | tar -xz -C /usr/local/bin temporal
 
       - name: Validate source contracts
         working-directory: workspace/agentic-aiops
         run: |
           pytest -q tests/test_golden_demo_assets.py tests/test_live_remediation.py tests/test_live_temporal_contract.py
 
+      - name: Run Golden Incident E2E
+        working-directory: workspace/agentic-aiops
+        env:
+          TEMPORAL_ADDRESS: 127.0.0.1:7233
+          TEMPORAL_TASK_QUEUE: agent-runs
+          DECISION_GATEWAY_URL: http://127.0.0.1:8080
+          PROMETHEUS_URL: http://127.0.0.1:19090
+          KUBERNETES_API: http://127.0.0.1:18001
+        run: |
+          set -euo pipefail
+          RUN_ID="golden-ci-$GITHUB_RUN_ID"
+          temporal server start-dev --ip 127.0.0.1 --port 7233 > /tmp/temporal.log 2>&1 &
+          cloud-agent-runtime-worker > /tmp/runtime-worker.log 2>&1 &
+          decision-lab-server --mode demo --host 127.0.0.1 --port 8080 > /tmp/decision.log 2>&1 &
+          kubectl -n golden-demo port-forward svc/prometheus 19090:9090 > /tmp/prometheus-pf.log 2>&1 &
+          kubectl proxy --port=18001 > /tmp/kube-proxy.log 2>&1 &
+          sleep 5
+          kubectl -n golden-demo scale deploy/load-generator --replicas=1
+          kubectl -n golden-demo rollout status deploy/load-generator --timeout=120s
+          sleep 8
+          python examples/live_golden_incident.py start --run-id "$RUN_ID" | tee /tmp/start.json
+          python examples/live_golden_incident.py status --run-id "$RUN_ID" | tee /tmp/waiting.json
+          grep -q '"paused": true' /tmp/waiting.json
+          test "$(kubectl -n golden-demo get deploy checkout-api -o jsonpath='{.spec.replicas}')" = "2"
+          golden-approval approve --run-id "$RUN_ID" --approval-id approval-001 --reason "GitHub Actions Golden Incident E2E" | tee /tmp/approval.json
+          python examples/live_golden_incident.py continue --run-id "$RUN_ID" | tee /tmp/continue.json
+          test "$(kubectl -n golden-demo get deploy checkout-api -o jsonpath='{.spec.replicas}')" = "4"
+          python examples/live_golden_incident.py status --run-id "$RUN_ID" | tee /tmp/complete.json
+          grep -q '"terminal": true' /tmp/complete.json
+          grep -q '"phase": "succeeded"' /tmp/complete.json
+          mkdir -p ../../artifacts/run
+          cp -R ".golden-runs/$RUN_ID" ../../artifacts/run/
+          cp /tmp/start.json /tmp/waiting.json /tmp/approval.json /tmp/continue.json /tmp/complete.json ../../artifacts/run/
       - name: Capture diagnostics
         if: always()
         run: |
