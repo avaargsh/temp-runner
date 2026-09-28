@@ -62,11 +62,15 @@ jobs:
           kubectl get nodes -o wide
           kubectl -n golden-demo get all
 
-      - name: Validate source contracts
+      - name: Install source test dependencies
         run: |
           python -m pip install -U pip
           pip install -e "workspace/agentic-aiops[dev]"
-          pytest -q workspace/agentic-aiops/tests/test_golden_demo_assets.py workspace/agentic-aiops/tests/test_live_remediation.py workspace/agentic-aiops/tests/test_live_temporal_contract.py
+
+      - name: Validate source contracts
+        working-directory: workspace/agentic-aiops
+        run: |
+          pytest -q tests/test_golden_demo_assets.py tests/test_live_remediation.py tests/test_live_temporal_contract.py
 
       - name: Capture diagnostics
         if: always()
