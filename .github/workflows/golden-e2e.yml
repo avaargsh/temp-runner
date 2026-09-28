@@ -1,6 +1,10 @@
 name: golden-e2e
 
 on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
       aiops_ref:
@@ -31,21 +35,21 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: avaargsh/agentic-aiops
-          ref: ${{ inputs.aiops_ref }}
+          ref: ${{ inputs.aiops_ref || 'main' }}
           path: workspace/agentic-aiops
 
       - name: Checkout agent-decision-lab
         uses: actions/checkout@v4
         with:
           repository: avaargsh/agent-decision-lab
-          ref: ${{ inputs.decision_ref }}
+          ref: ${{ inputs.decision_ref || 'main' }}
           path: workspace/agent-decision-lab
 
       - name: Checkout cloud-agent-runtime
         uses: actions/checkout@v4
         with:
           repository: avaargsh/cloud-agent-runtime
-          ref: ${{ inputs.runtime_ref }}
+          ref: ${{ inputs.runtime_ref || 'main' }}
           path: workspace/cloud-agent-runtime
 
       - name: Install kind
@@ -80,7 +84,7 @@ jobs:
           kubectl -n golden-demo get all -o wide > artifacts/resources.txt 2>&1 || true
           kubectl -n golden-demo get events --sort-by=.lastTimestamp > artifacts/events.txt 2>&1 || true
           kubectl -n golden-demo logs deploy/prometheus > artifacts/prometheus.log 2>&1 || true
-          printf 'aiops_ref=%s\ndecision_ref=%s\nruntime_ref=%s\n' "${{ inputs.aiops_ref }}" "${{ inputs.decision_ref }}" "${{ inputs.runtime_ref }}" > artifacts/refs.txt
+          printf 'aiops_ref=%s\ndecision_ref=%s\nruntime_ref=%s\n' "${{ inputs.aiops_ref || 'main' }}" "${{ inputs.decision_ref || 'main' }}" "${{ inputs.runtime_ref || 'main' }}" > artifacts/refs.txt
 
       - name: Upload diagnostics
         if: always()
