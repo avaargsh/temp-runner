@@ -25,3 +25,19 @@ kind -> workload/load -> evidence -> decision -> WAIT_APPROVAL
 3. Upload logs and state snapshots as Actions artifacts.
 4. A green unit test in a source repository is not an E2E claim.
 5. Only call Golden Incident E2E verified after this runner observes the complete acceptance path.
+
+
+## P0 baseline
+
+The P0 baseline is intentionally narrow and frozen:
+
+- source contracts pass;
+- a disposable kind cluster boots the Golden Incident stack;
+- approval is granted before any Kubernetes write;
+- `checkout-api` scales from 2 to 4 ready replicas;
+- Prometheus post-action verification passes;
+- remediation reaches `VERIFIED` without rollback;
+- the canonical Temporal run reaches `phase=succeeded` and `terminal=true`;
+- diagnostics are retained as an Actions artifact.
+
+The `golden-e2e` workflow runs on pull requests and pushes to `main`, in addition to manual dispatch. New features must not weaken or bypass this baseline.
