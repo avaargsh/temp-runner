@@ -55,7 +55,7 @@ jobs:
 
       - name: Create disposable cluster
         working-directory: workspace/agentic-aiops
-        run: ./scripts/setup-golden-kind.sh
+        run: bash ./scripts/setup-golden-kind.sh
 
       - name: Show cluster state
         run: |
