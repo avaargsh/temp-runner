@@ -35,8 +35,9 @@ The P0 baseline is intentionally narrow and frozen:
 
 - source contracts pass;
 - a disposable kind cluster boots the Golden Incident stack;
-- approval is granted before any Kubernetes write;
-- `checkout-api` scales from 2 to 4 ready replicas;
+- an unrelated approval is injected first and must leave `checkout-api` at 2 replicas;
+- only the exact frozen-action approval may authorize the Kubernetes write;
+- `checkout-api` then scales from 2 to 4 ready replicas;
 - Prometheus post-action verification passes;
 - remediation reaches `VERIFIED` without rollback;
 - the canonical Temporal run reaches `phase=succeeded` and `terminal=true`;
