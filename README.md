@@ -37,6 +37,7 @@ The P0 baseline is intentionally narrow and frozen:
 - a disposable kind cluster boots the Golden Incident stack;
 - an unrelated approval is injected first and must leave `checkout-api` at 2 replicas;
 - only the exact frozen-action approval may authorize the Kubernetes write;
+- duplicate delivery of that same approval ID must be deduplicated to one durable approval event;
 - `checkout-api` then scales from 2 to 4 ready replicas;
 - Prometheus post-action verification passes;
 - remediation reaches `VERIFIED` without rollback;
