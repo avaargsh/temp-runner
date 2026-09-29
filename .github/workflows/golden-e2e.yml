@@ -125,7 +125,15 @@ jobs:
           wait_http "http://127.0.0.1:8080/health" || wait_http "http://127.0.0.1:8080/docs"
           wait_http "http://127.0.0.1:19090/-/ready"
           wait_http "http://127.0.0.1:18001/version"
-          temporal operator cluster health --address 127.0.0.1:7233
+          temporal_ready() {
+            for _ in $(seq 1 60); do
+              if temporal operator cluster health --address 127.0.0.1:7233 >/dev/null 2>&1; then return 0; fi
+              sleep 1
+            done
+            echo "Temporal cluster not ready" >&2
+            return 1
+          }
+          temporal_ready
 
           kubectl -n golden-demo scale deploy/load-generator --replicas=1
           kubectl -n golden-demo rollout status deploy/load-generator --timeout=120s
