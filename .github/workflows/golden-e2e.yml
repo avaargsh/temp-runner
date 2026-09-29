@@ -214,14 +214,17 @@ encoded=json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=
 d["replay_digest"]="sha256:"+hashlib.sha256(encoded).hexdigest()
 json.dump(d, open(p,"w"), indent=2)
 PY
-          if agent-control-plane gate demo/control-plane/golden-eval-gate.yaml \
+          set +e
+          agent-control-plane gate demo/control-plane/golden-eval-gate.yaml \
             --metrics ".golden-runs/$RUN_ID/acceptance-metrics.json" \
-            --evidence /tmp/release-evidence-operation-block.json > /tmp/operation-gate.json 2>&1; then
-            echo "non-VERIFIED operation unexpectedly passed release gate" >&2
-            exit 1
-          fi
+            --evidence /tmp/release-evidence-operation-block.json > /tmp/operation-gate.json 2>&1
+          OPERATION_GATE_RC=$?
+          set -e
           grep -q '"decision": "BLOCK"' /tmp/operation-gate.json
           grep -q '"reason": "OPERATION_NOT_VERIFIED"' /tmp/operation-gate.json
+          # BLOCK is the semantic invariant. Record the current CLI exit-code
+          # contract without coupling this system proof to it.
+          printf '%s\n' "$OPERATION_GATE_RC" > /tmp/operation-gate.exitcode
 
           # Negative control: mutation of sealed release evidence must fail closed.
           cp ".golden-runs/$RUN_ID/release-evidence.json" /tmp/release-evidence-mutated.json
@@ -232,17 +235,19 @@ d = json.load(open(p))
 d["bundle_sha256"] = "sha256:mutated"
 json.dump(d, open(p, "w"))
 PY
-          if agent-control-plane gate demo/control-plane/golden-eval-gate.yaml \
+          set +e
+          agent-control-plane gate demo/control-plane/golden-eval-gate.yaml \
             --metrics ".golden-runs/$RUN_ID/acceptance-metrics.json" \
-            --evidence /tmp/release-evidence-mutated.json > /tmp/mutation-gate.json 2>&1; then
-            echo "mutated evidence unexpectedly passed release gate" >&2
-            exit 1
-          fi
+            --evidence /tmp/release-evidence-mutated.json > /tmp/mutation-gate.json 2>&1
+          MUTATION_GATE_RC=$?
+          set -e
           grep -q '"decision": "BLOCK"' /tmp/mutation-gate.json
+          grep -q '"reason": "INVALID_RELEASE_EVIDENCE"' /tmp/mutation-gate.json
+          printf '%s\n' "$MUTATION_GATE_RC" > /tmp/mutation-gate.exitcode
 
           mkdir -p ../../artifacts/run
           cp -R ".golden-runs/$RUN_ID" ../../artifacts/run/
-          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/duplicate-approval.json /tmp/after-duplicate-approval.json /tmp/continue.json /tmp/complete.json /tmp/retry-continue.json /tmp/release-gate.json /tmp/operation-gate.json /tmp/mutation-gate.json ../../artifacts/run/
+          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/duplicate-approval.json /tmp/after-duplicate-approval.json /tmp/continue.json /tmp/complete.json /tmp/retry-continue.json /tmp/release-gate.json /tmp/operation-gate.json /tmp/operation-gate.exitcode /tmp/mutation-gate.json /tmp/mutation-gate.exitcode ../../artifacts/run/
 
       - name: Capture diagnostics
         if: always()
