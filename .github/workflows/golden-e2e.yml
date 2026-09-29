@@ -5,6 +5,8 @@ on:
     branches: [main]
   push:
     branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"
   workflow_dispatch:
     inputs:
       aiops_ref:
@@ -34,6 +36,10 @@ jobs:
     steps:
       - name: Checkout runner
         uses: actions/checkout@v4
+
+      - name: Record immutable source SHAs
+        id: runner-ref
+        run: echo "runner_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Checkout agentic-aiops
         uses: actions/checkout@v4
@@ -181,7 +187,13 @@ PY
           cp /tmp/decision.log artifacts/decision.log 2>/dev/null || true
           cp /tmp/prometheus-pf.log artifacts/prometheus-port-forward.log 2>/dev/null || true
           cp /tmp/kube-proxy.log artifacts/kube-proxy.log 2>/dev/null || true
-          printf 'aiops_ref=%s\ndecision_ref=%s\nruntime_ref=%s\ncontrol_plane_ref=%s\n' "${{ inputs.aiops_ref || 'main' }}" "${{ inputs.decision_ref || 'main' }}" "${{ inputs.runtime_ref || 'main' }}" "${{ inputs.control_plane_ref || 'main' }}" > artifacts/refs.txt
+          {
+            printf 'runner_sha=%s\n' "${{ steps.runner-ref.outputs.runner_sha }}"
+            printf 'aiops_sha=%s\n' "$(git -C workspace/agentic-aiops rev-parse HEAD)"
+            printf 'decision_sha=%s\n' "$(git -C workspace/agent-decision-lab rev-parse HEAD)"
+            printf 'runtime_sha=%s\n' "$(git -C workspace/cloud-agent-runtime rev-parse HEAD)"
+            printf 'control_plane_sha=%s\n' "$(git -C workspace/agent-control-plane rev-parse HEAD)"
+          } > artifacts/refs.txt
 
       - name: Upload diagnostics
         if: always()
