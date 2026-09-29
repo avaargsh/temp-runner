@@ -9,13 +9,15 @@ This repository owns **experiments, not product code**. It checks out the three 
 - [agentic-aiops](https://github.com/avaargsh/agentic-aiops) — evidence, policy, remediation and verification
 - [agent-decision-lab](https://github.com/avaargsh/agent-decision-lab) — Decision Gateway
 - [cloud-agent-runtime](https://github.com/avaargsh/cloud-agent-runtime) — Temporal durable Run lifecycle
+- [agent-control-plane](https://github.com/avaargsh/agent-control-plane) — Release policy and EvalGate authority
 
 Target acceptance path:
 
 ```text
 kind -> workload/load -> evidence -> decision -> WAIT_APPROVAL
      -> approval signal -> continue -> scale 2->4 -> verify
-     -> Temporal COMPLETE -> replay from frozen evidence
+     -> Temporal COMPLETE -> replay/evaluation metrics
+     -> Agent Control Plane EvalGate -> release promotable
 ```
 
 ## Rules
@@ -38,6 +40,8 @@ The P0 baseline is intentionally narrow and frozen:
 - Prometheus post-action verification passes;
 - remediation reaches `VERIFIED` without rollback;
 - the canonical Temporal run reaches `phase=succeeded` and `terminal=true`;
-- diagnostics are retained as an Actions artifact.
+- replay/evaluation emits the metric contract consumed by the control plane;
+- the Agent Control Plane EvalGate must pass before the run is accepted as release-promotable;
+- diagnostics, metrics, and gate evidence are retained as Actions artifacts.
 
 The `golden-e2e` workflow runs on pull requests and pushes to `main`, in addition to manual dispatch. New features must not weaken or bypass this baseline.
