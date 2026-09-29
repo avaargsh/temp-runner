@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: avaargsh/agentic-aiops
-          ref: ${{ inputs.aiops_ref || 'main' }}
+          ref: ${{ inputs.aiops_ref || 'feat/operation-reconciliation' }}
           path: workspace/agentic-aiops
 
       - name: Checkout agent-decision-lab
@@ -66,7 +66,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: avaargsh/agent-control-plane
-          ref: ${{ inputs.control_plane_ref || 'main' }}
+          ref: ${{ inputs.control_plane_ref || 'feat/operation-provenance-gate' }}
           path: workspace/agent-control-plane
 
       - name: Install kind
@@ -183,6 +183,37 @@ PY
             --metrics ".golden-runs/$RUN_ID/acceptance-metrics.json" \
             --evidence ".golden-runs/$RUN_ID/release-evidence.json" | tee /tmp/release-gate.json
           grep -q '"decision": "PROMOTE"' /tmp/release-gate.json
+          python - <<'PY'
+import json, pathlib
+run_dirs=list(pathlib.Path(".golden-runs").glob("golden-ci-*"))
+assert len(run_dirs)==1, run_dirs
+d=json.load(open(run_dirs[0]/"release-evidence.json"))
+assert d["operation_id"], d
+assert d["operation_phase"]=="VERIFIED", d
+assert d["operation_evidence_refs"], d
+PY
+
+          # Negative control: a correctly sealed but non-VERIFIED operation
+          # must still be rejected by the Control Plane release invariant.
+          cp ".golden-runs/$RUN_ID/release-evidence.json" /tmp/release-evidence-operation-block.json
+          python - <<'PY'
+import hashlib, json
+p="/tmp/release-evidence-operation-block.json"
+d=json.load(open(p))
+d["operation_phase"]="VERIFICATION_FAILED"
+payload={k:v for k,v in d.items() if k!="replay_digest"}
+encoded=json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+d["replay_digest"]="sha256:"+hashlib.sha256(encoded).hexdigest()
+json.dump(d, open(p,"w"), indent=2)
+PY
+          if agent-control-plane gate demo/control-plane/golden-eval-gate.yaml \
+            --metrics ".golden-runs/$RUN_ID/acceptance-metrics.json" \
+            --evidence /tmp/release-evidence-operation-block.json > /tmp/operation-gate.json 2>&1; then
+            echo "non-VERIFIED operation unexpectedly passed release gate" >&2
+            exit 1
+          fi
+          grep -q '"decision": "BLOCK"' /tmp/operation-gate.json
+          grep -q '"reason": "OPERATION_NOT_VERIFIED"' /tmp/operation-gate.json
 
           # Negative control: mutation of sealed release evidence must fail closed.
           cp ".golden-runs/$RUN_ID/release-evidence.json" /tmp/release-evidence-mutated.json
@@ -203,7 +234,7 @@ PY
 
           mkdir -p ../../artifacts/run
           cp -R ".golden-runs/$RUN_ID" ../../artifacts/run/
-          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/duplicate-approval.json /tmp/after-duplicate-approval.json /tmp/continue.json /tmp/complete.json /tmp/retry-continue.json /tmp/release-gate.json /tmp/mutation-gate.json ../../artifacts/run/
+          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/duplicate-approval.json /tmp/after-duplicate-approval.json /tmp/continue.json /tmp/complete.json /tmp/retry-continue.json /tmp/release-gate.json /tmp/operation-gate.json /tmp/mutation-gate.json ../../artifacts/run/
 
       - name: Capture diagnostics
         if: always()
