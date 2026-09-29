@@ -165,6 +165,16 @@ PY
           grep -q '"terminal": true' /tmp/complete.json
           grep -q '"phase": "succeeded"' /tmp/complete.json
 
+          # Retry after the side effect + receipt are durable. This must reuse
+          # the same receipt rather than issue a second Kubernetes mutation.
+          RECEIPT=$(find ".golden-runs/$RUN_ID/actions" -type f -name '*.json')
+          test "$(printf '%s\n' "$RECEIPT" | sed '/^$/d' | wc -l)" = "1"
+          RECEIPT_SHA_BEFORE=$(sha256sum "$RECEIPT" | awk '{print $1}')
+          python examples/live_golden_incident.py continue --run-id "$RUN_ID" | tee /tmp/retry-continue.json
+          RECEIPT_SHA_AFTER=$(sha256sum "$RECEIPT" | awk '{print $1}')
+          test "$RECEIPT_SHA_BEFORE" = "$RECEIPT_SHA_AFTER"
+          test "$(kubectl -n golden-demo get deploy checkout-api -o jsonpath='{.spec.replicas}')" = "4"
+
           # The producer seals per-run acceptance evidence; the Control Plane
           # is the only component that decides PROMOTE/BLOCK.
           test -s ".golden-runs/$RUN_ID/release-evidence.json"
@@ -193,7 +203,7 @@ PY
 
           mkdir -p ../../artifacts/run
           cp -R ".golden-runs/$RUN_ID" ../../artifacts/run/
-          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/duplicate-approval.json /tmp/after-duplicate-approval.json /tmp/continue.json /tmp/complete.json /tmp/release-gate.json /tmp/mutation-gate.json ../../artifacts/run/
+          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/duplicate-approval.json /tmp/after-duplicate-approval.json /tmp/continue.json /tmp/complete.json /tmp/retry-continue.json /tmp/release-gate.json /tmp/mutation-gate.json ../../artifacts/run/
 
       - name: Capture diagnostics
         if: always()
