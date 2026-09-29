@@ -134,6 +134,14 @@ jobs:
           python examples/live_golden_incident.py status --run-id "$RUN_ID" | tee /tmp/waiting.json
           grep -q '"paused": true' /tmp/waiting.json
           test "$(kubectl -n golden-demo get deploy checkout-api -o jsonpath='{.spec.replicas}')" = "2"
+
+          # Negative control: an unrelated approval must not authorize the frozen action.
+          golden-approval approve --run-id "$RUN_ID" --approval-id approval-for-another-action --reason "negative control" | tee /tmp/wrong-approval.json
+          python examples/live_golden_incident.py continue --run-id "$RUN_ID" | tee /tmp/after-wrong-approval.json
+          test "$(kubectl -n golden-demo get deploy checkout-api -o jsonpath='{.spec.replicas}')" = "2"
+          python examples/live_golden_incident.py status --run-id "$RUN_ID" | tee /tmp/still-waiting.json
+          grep -q '"terminal": false' /tmp/still-waiting.json
+
           APPROVAL_ID=$(python examples/live_golden_incident.py status --run-id "$RUN_ID" | python -c 'import json,sys; d=json.load(sys.stdin); xs=d.get("pending_approval_ids") or []; assert len(xs)==1, f"expected one pending approval, got {xs}"; print(xs[0])')
           golden-approval approve --run-id "$RUN_ID" --approval-id "$APPROVAL_ID" --reason "GitHub Actions Golden Incident E2E" | tee /tmp/approval.json
           python examples/live_golden_incident.py continue --run-id "$RUN_ID" | tee /tmp/continue.json
@@ -172,7 +180,7 @@ PY
 
           mkdir -p ../../artifacts/run
           cp -R ".golden-runs/$RUN_ID" ../../artifacts/run/
-          cp /tmp/start.json /tmp/waiting.json /tmp/approval.json /tmp/continue.json /tmp/complete.json /tmp/release-gate.json /tmp/mutation-gate.json ../../artifacts/run/
+          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/continue.json /tmp/complete.json /tmp/release-gate.json /tmp/mutation-gate.json ../../artifacts/run/
 
       - name: Capture diagnostics
         if: always()
