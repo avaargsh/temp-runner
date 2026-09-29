@@ -107,7 +107,20 @@ jobs:
           decision-lab-server --mode demo --host 127.0.0.1 --port 8080 > /tmp/decision.log 2>&1 &
           kubectl -n golden-demo port-forward svc/prometheus 19090:9090 > /tmp/prometheus-pf.log 2>&1 &
           kubectl proxy --port=18001 > /tmp/kube-proxy.log 2>&1 &
-          sleep 5
+          wait_http() {
+            local url="$1"
+            for _ in $(seq 1 60); do
+              if curl -fsS "$url" >/dev/null 2>&1; then return 0; fi
+              sleep 1
+            done
+            echo "endpoint not ready: $url" >&2
+            return 1
+          }
+          wait_http "http://127.0.0.1:8080/health" || wait_http "http://127.0.0.1:8080/docs"
+          wait_http "http://127.0.0.1:19090/-/ready"
+          wait_http "http://127.0.0.1:18001/version"
+          temporal operator cluster health --address 127.0.0.1:7233
+
           kubectl -n golden-demo scale deploy/load-generator --replicas=1
           kubectl -n golden-demo rollout status deploy/load-generator --timeout=120s
           sleep 8
@@ -163,6 +176,11 @@ PY
           kubectl -n golden-demo get all -o wide > artifacts/resources.txt 2>&1 || true
           kubectl -n golden-demo get events --sort-by=.lastTimestamp > artifacts/events.txt 2>&1 || true
           kubectl -n golden-demo logs deploy/prometheus > artifacts/prometheus.log 2>&1 || true
+          cp /tmp/temporal.log artifacts/temporal.log 2>/dev/null || true
+          cp /tmp/runtime-worker.log artifacts/runtime-worker.log 2>/dev/null || true
+          cp /tmp/decision.log artifacts/decision.log 2>/dev/null || true
+          cp /tmp/prometheus-pf.log artifacts/prometheus-port-forward.log 2>/dev/null || true
+          cp /tmp/kube-proxy.log artifacts/kube-proxy.log 2>/dev/null || true
           printf 'aiops_ref=%s\ndecision_ref=%s\nruntime_ref=%s\ncontrol_plane_ref=%s\n' "${{ inputs.aiops_ref || 'main' }}" "${{ inputs.decision_ref || 'main' }}" "${{ inputs.runtime_ref || 'main' }}" "${{ inputs.control_plane_ref || 'main' }}" > artifacts/refs.txt
 
       - name: Upload diagnostics
