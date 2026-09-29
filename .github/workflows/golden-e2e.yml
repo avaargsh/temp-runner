@@ -19,6 +19,10 @@ on:
         description: cloud-agent-runtime ref
         required: true
         default: main
+      control_plane_ref:
+        description: agent-control-plane ref
+        required: true
+        default: main
 
 permissions:
   contents: read
@@ -52,6 +56,13 @@ jobs:
           ref: ${{ inputs.runtime_ref || 'main' }}
           path: workspace/cloud-agent-runtime
 
+      - name: Checkout agent-control-plane
+        uses: actions/checkout@v4
+        with:
+          repository: avaargsh/agent-control-plane
+          ref: ${{ inputs.control_plane_ref || 'main' }}
+          path: workspace/agent-control-plane
+
       - name: Install kind
         uses: helm/kind-action@v1
         with:
@@ -72,6 +83,7 @@ jobs:
           pip install -e "workspace/cloud-agent-runtime[temporal]"
           pip install -e "workspace/agent-decision-lab"
           pip install -e "workspace/agentic-aiops[dev]"
+          pip install -e "workspace/agent-control-plane"
           curl -fsSL https://github.com/temporalio/cli/releases/download/v1.9.1/temporal_cli_1.9.1_linux_amd64.tar.gz | tar -xz -C /usr/local/bin temporal
 
       - name: Validate source contracts
@@ -111,9 +123,16 @@ jobs:
           python examples/live_golden_incident.py status --run-id "$RUN_ID" | tee /tmp/complete.json
           grep -q '"terminal": true' /tmp/complete.json
           grep -q '"phase": "succeeded"' /tmp/complete.json
+
+          # Replay/evaluation produces evidence metrics; only the control plane
+          # decides whether those metrics make the release promotable.
+          agentic-aiops evaluate-scenarios benchmarks/scenarios/checkout-latency.json --metrics-only > /tmp/release-metrics.json
+          agent-control-plane gate ../agent-control-plane/examples/aiops-replay-gate.yaml --metrics /tmp/release-metrics.json | tee /tmp/release-gate.json
+          grep -q '"passed": true' /tmp/release-gate.json
+
           mkdir -p ../../artifacts/run
           cp -R ".golden-runs/$RUN_ID" ../../artifacts/run/
-          cp /tmp/start.json /tmp/waiting.json /tmp/approval.json /tmp/continue.json /tmp/complete.json ../../artifacts/run/
+          cp /tmp/start.json /tmp/waiting.json /tmp/approval.json /tmp/continue.json /tmp/complete.json /tmp/release-metrics.json /tmp/release-gate.json ../../artifacts/run/
 
       - name: Capture diagnostics
         if: always()
@@ -123,7 +142,7 @@ jobs:
           kubectl -n golden-demo get all -o wide > artifacts/resources.txt 2>&1 || true
           kubectl -n golden-demo get events --sort-by=.lastTimestamp > artifacts/events.txt 2>&1 || true
           kubectl -n golden-demo logs deploy/prometheus > artifacts/prometheus.log 2>&1 || true
-          printf 'aiops_ref=%s\ndecision_ref=%s\nruntime_ref=%s\n' "${{ inputs.aiops_ref || 'main' }}" "${{ inputs.decision_ref || 'main' }}" "${{ inputs.runtime_ref || 'main' }}" > artifacts/refs.txt
+          printf 'aiops_ref=%s\ndecision_ref=%s\nruntime_ref=%s\ncontrol_plane_ref=%s\n' "${{ inputs.aiops_ref || 'main' }}" "${{ inputs.decision_ref || 'main' }}" "${{ inputs.runtime_ref || 'main' }}" "${{ inputs.control_plane_ref || 'main' }}" > artifacts/refs.txt
 
       - name: Upload diagnostics
         if: always()
