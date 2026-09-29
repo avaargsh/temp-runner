@@ -144,6 +144,19 @@ jobs:
 
           APPROVAL_ID=$(python examples/live_golden_incident.py status --run-id "$RUN_ID" | python -c 'import json,sys; d=json.load(sys.stdin); xs=d.get("pending_approval_ids") or []; assert len(xs)==1, f"expected one pending approval, got {xs}"; print(xs[0])')
           golden-approval approve --run-id "$RUN_ID" --approval-id "$APPROVAL_ID" --reason "GitHub Actions Golden Incident E2E" | tee /tmp/approval.json
+
+          # Duplicate delivery is a normal distributed-systems failure mode.
+          # Temporal must deduplicate the same approval identity.
+          golden-approval approve --run-id "$RUN_ID" --approval-id "$APPROVAL_ID" --reason "duplicate delivery negative control" | tee /tmp/duplicate-approval.json
+          python examples/live_golden_incident.py status --run-id "$RUN_ID" | tee /tmp/after-duplicate-approval.json
+          python - <<'PY'
+import json
+d=json.load(open("/tmp/after-duplicate-approval.json"))
+aid=json.load(open("/tmp/waiting.json"))["pending_approval_ids"][0]
+events=[e for e in d.get("approval_events", []) if e.get("approval_id")==aid]
+assert len(events)==1, f"approval was not deduplicated: {events}"
+PY
+
           python examples/live_golden_incident.py continue --run-id "$RUN_ID" | tee /tmp/continue.json
           test "$(kubectl -n golden-demo get deploy checkout-api -o jsonpath='{.spec.replicas}')" = "4"
           grep -q '"status": "VERIFIED"' /tmp/continue.json
@@ -180,7 +193,7 @@ PY
 
           mkdir -p ../../artifacts/run
           cp -R ".golden-runs/$RUN_ID" ../../artifacts/run/
-          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/continue.json /tmp/complete.json /tmp/release-gate.json /tmp/mutation-gate.json ../../artifacts/run/
+          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/duplicate-approval.json /tmp/after-duplicate-approval.json /tmp/continue.json /tmp/complete.json /tmp/release-gate.json /tmp/mutation-gate.json ../../artifacts/run/
 
       - name: Capture diagnostics
         if: always()
