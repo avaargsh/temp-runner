@@ -1,0 +1,22 @@
+{
+  "schema_version": "agent-stack-lock/v1",
+  "generated_from": "accepted-mainline",
+  "repositories": {
+    "agentic_aiops": {
+      "repository": "avaargsh/agentic-aiops",
+      "sha": "0fe10c0e17456541a7cf5de522c077f03164b726"
+    },
+    "agent_decision_lab": {
+      "repository": "avaargsh/agent-decision-lab",
+      "sha": "7253e4bde840a690bb4cb551b6aedb379ba91970"
+    },
+    "cloud_agent_runtime": {
+      "repository": "avaargsh/cloud-agent-runtime",
+      "sha": "205a98d0c7127a8419a32120cabacaeeb8219288"
+    },
+    "agent_control_plane": {
+      "repository": "avaargsh/agent-control-plane",
+      "sha": "6d98e803b218d40482611a5736604b0dd49a4bac"
+    }
+  }
+}
