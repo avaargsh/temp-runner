@@ -6,19 +6,19 @@ This file is the cross-repository source of truth for environment-variable namin
 
 | Repository | Secret | Status |
 | --- | --- | --- |
-| `avaargsh/temp-runner` | `AGENT_STACK_GITHUB_TOKEN` | **Required now** because the E2E checks out private `agent-control-plane`. |
+| `avaargsh/temp-runner` | `AGENT_STACK_GITHUB_TOKEN` | Optional while all locked source repositories are public; only needed if a locked source becomes private. |
 | `avaargsh/agentic-aiops` | `AGENT_STACK_GITHUB_TOKEN` | **Required to enable** `four-repo-acceptance`; without it that job is skipped. |
 | `avaargsh/agent-decision-lab` | `HF_TOKEN` | Optional; only needed for gated/private Hugging Face models. |
 | `avaargsh/cloud-agent-runtime` | none | No repository secret currently consumed. |
 | `avaargsh/agent-control-plane` | none | No repository secret currently consumed by its workflows. |
 
-For the current repository visibility, `AGENT_STACK_GITHUB_TOKEN` only needs access to `avaargsh/agent-control-plane` with **Contents: read**. Metadata read is implicit. Do not grant write/admin permissions just for cross-repo checkout.
+For the current repository visibility, the Golden Stack can use the normal GitHub Actions token because every locked source repository is public. If a source repository becomes private, configure `AGENT_STACK_GITHUB_TOKEN` with **Contents: read** only for the required repositories. Do not grant write/admin permissions just for cross-repo checkout.
 
 ## Secrets and credentials
 
 | Variable | Required | Scope | Notes |
 | --- | --- | --- | --- |
-| `AGENT_STACK_GITHUB_TOKEN` | CI only when a referenced repo is private | GitHub Actions | Canonical replacement for `GOLDEN_STACK_REPO_TOKEN` and `CONTROL_PLANE_TOKEN`. Prefer a fine-grained PAT or GitHub App token with read-only Contents access to the required private repos. |
+| `AGENT_STACK_GITHUB_TOKEN` | Only when a locked source repo is private | GitHub Actions | Optional public-stack override. Prefer a fine-grained PAT or GitHub App token with read-only Contents access to only the required private repos. |
 | `HF_TOKEN` | Only for gated/private Hugging Face checkpoints | model benchmark | Standard Hugging Face variable; do not introduce an Agent-specific alias. |
 | `KUBECONFIG` | Only outside environments where kubectl already has credentials | Kubernetes | Standard kubeconfig path. Prefer workload identity/OIDC in production rather than storing kubeconfig contents in repository secrets. |
 | `AGENT_STACK_TEMPORAL_DB_PASSWORD` | Shared/non-ephemeral demo DB only | local compose | Local ephemeral compose may use a disposable default; shared environments must override it. |
@@ -64,3 +64,15 @@ The old CI secret names `GOLDEN_STACK_REPO_TOKEN` and `CONTROL_PLANE_TOKEN` are 
 The Decision Lab model benchmark maps workflow inputs into `MODEL`, `CALIBRATION` and `TEST_DATASET`. These are job-local values, not repository secrets and do not need to be configured globally.
 
 GitHub-provided variables such as `GITHUB_SHA`, `GITHUB_RUN_ID`, `RUNNER_OS` and `RUNNER_ARCH` are platform-owned and are intentionally excluded from the operator configuration surface.
+
+
+## Immutable source lock
+
+`stack-lock.json` is the default source-of-truth for Golden E2E repository refs.
+Push, pull-request, and scheduled runs consume those exact commit SHAs. Manual
+`workflow_dispatch` inputs may override an individual ref for experiments,
+but an accepted baseline should be committed back into the lock before it is
+treated as reproducible release evidence.
+
+The workflow records the actual checked-out SHAs in `artifacts/refs.txt`, so
+the evidence bundle can be compared directly with the declared lock.
