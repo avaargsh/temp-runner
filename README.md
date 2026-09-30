@@ -36,6 +36,8 @@ The P0 baseline is intentionally narrow and frozen:
 - source contracts pass;
 - a disposable kind cluster boots the Golden Incident stack;
 - an unrelated approval is injected first and must leave `checkout-api` at 2 replicas;
+- deployment authority inventory is generated before execution and authority expansion must be denied;
+- the admitted authority digest is frozen into evidence, decision, operation, and release evidence;
 - only the exact frozen-action approval may authorize the Kubernetes write;
 - duplicate delivery of that same approval ID must be deduplicated to one durable approval event;
 - retry after a completed side effect must reuse the one durable action receipt and leave the desired replica count unchanged;
@@ -48,3 +50,5 @@ The P0 baseline is intentionally narrow and frozen:
 - diagnostics, metrics, and gate evidence are retained as Actions artifacts.
 
 The `golden-e2e` workflow runs on pull requests and pushes to `main`, in addition to manual dispatch. New features must not weaken or bypass this baseline.
+
+Because `agent-control-plane` is currently private, cross-repository runs need a `AGENT_STACK_GITHUB_TOKEN` repository secret with read access to every private repository referenced by the stack. The workflow falls back to the normal GitHub token, which is sufficient if the control-plane repository later becomes public.
