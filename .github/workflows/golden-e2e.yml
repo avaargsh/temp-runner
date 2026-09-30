@@ -47,10 +47,29 @@ jobs:
           python - <<'PY'
           import json
           import os
+          import re
           from pathlib import Path
 
           lock = json.loads(Path("stack-lock.json").read_text())
-          repos = lock["repositories"]
+          if lock.get("schema_version") != "agent-stack-lock/v1":
+              raise SystemExit("unsupported stack lock schema")
+          repos = lock.get("repositories")
+          if not isinstance(repos, dict):
+              raise SystemExit("stack lock repositories must be an object")
+          expected = {
+              "agentic_aiops": "avaargsh/agentic-aiops",
+              "agent_decision_lab": "avaargsh/agent-decision-lab",
+              "cloud_agent_runtime": "avaargsh/cloud-agent-runtime",
+              "agent_control_plane": "avaargsh/agent-control-plane",
+          }
+          for key, repository in expected.items():
+              item = repos.get(key)
+              if not isinstance(item, dict):
+                  raise SystemExit(f"missing stack lock entry: {key}")
+              if item.get("repository") != repository:
+                  raise SystemExit(f"repository identity mismatch for {key}")
+              if not re.fullmatch(r"[0-9a-f]{40}", str(item.get("sha", ""))):
+                  raise SystemExit(f"invalid immutable sha for {key}")
           values = {
               "aiops_ref": repos["agentic_aiops"]["sha"],
               "decision_ref": repos["agent_decision_lab"]["sha"],
@@ -90,6 +109,36 @@ jobs:
           ref: ${{ inputs.control_plane_ref || steps.stack-lock.outputs.control_plane_ref }}
           token: ${{ secrets.AGENT_STACK_GITHUB_TOKEN || github.token }}
           path: workspace/agent-control-plane
+
+      - name: Verify locked source identities
+        env:
+          AIOPS_OVERRIDE: ${{ inputs.aiops_ref }}
+          DECISION_OVERRIDE: ${{ inputs.decision_ref }}
+          RUNTIME_OVERRIDE: ${{ inputs.runtime_ref }}
+          CONTROL_PLANE_OVERRIDE: ${{ inputs.control_plane_ref }}
+          AIOPS_LOCK: ${{ steps.stack-lock.outputs.aiops_ref }}
+          DECISION_LOCK: ${{ steps.stack-lock.outputs.decision_ref }}
+          RUNTIME_LOCK: ${{ steps.stack-lock.outputs.runtime_ref }}
+          CONTROL_PLANE_LOCK: ${{ steps.stack-lock.outputs.control_plane_ref }}
+        run: |
+          verify_locked() {
+            local override="$1"
+            local expected="$2"
+            local path="$3"
+            if [ -n "$override" ]; then
+              return 0
+            fi
+            local actual
+            actual="$(git -C "$path" rev-parse HEAD)"
+            test "$actual" = "$expected" || {
+              echo "::error::locked source mismatch for $path: expected=$expected actual=$actual"
+              exit 1
+            }
+          }
+          verify_locked "$AIOPS_OVERRIDE" "$AIOPS_LOCK" workspace/agentic-aiops
+          verify_locked "$DECISION_OVERRIDE" "$DECISION_LOCK" workspace/agent-decision-lab
+          verify_locked "$RUNTIME_OVERRIDE" "$RUNTIME_LOCK" workspace/cloud-agent-runtime
+          verify_locked "$CONTROL_PLANE_OVERRIDE" "$CONTROL_PLANE_LOCK" workspace/agent-control-plane
 
       - name: Install kind
         uses: helm/kind-action@v1
