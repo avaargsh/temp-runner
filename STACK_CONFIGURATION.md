@@ -41,6 +41,11 @@ For the current repository visibility, `AGENT_STACK_GITHUB_TOKEN` only needs acc
 | `AGENT_RELEASE_NAME` | release-specific | AIOps evidence |
 | `AGENT_STACK_LIVE_SMOKE` | unset | Control Plane integration opt-in |
 | `AGENT_STACK_TEMPORAL_DB_USER` | `temporal` | local compose |
+| `TEMPORAL_VERSION` | `1.27.2` | local compose image selection |
+| `RUN_ID` | scenario-specific default | AIOps demo/acceptance scripts |
+| `SESSION_ID` | `golden-demo` | AIOps acceptance script |
+| `PROM_PORT` | `19090` | local live demo helper |
+| `API_PORT` | `18001` | local live demo helper |
 
 ## Derived values — do not configure as long-lived credentials
 
@@ -53,3 +58,9 @@ Exact incident `approval_id`, `evidence_digest`, operation IDs and replay digest
 The Control Plane temporarily accepts `ACP_KUBE_CONTEXT`, `ACP_KUBE_NAMESPACE`, `ACP_TEMPORAL_ADDRESS` and `ACP_LIVE_SMOKE` as compatibility aliases. New automation should only use the canonical names above.
 
 The old CI secret names `GOLDEN_STACK_REPO_TOKEN` and `CONTROL_PLANE_TOKEN` are retired by the current credential-normalization changes.
+
+## Workflow-local values
+
+The Decision Lab model benchmark maps workflow inputs into `MODEL`, `CALIBRATION` and `TEST_DATASET`. These are job-local values, not repository secrets and do not need to be configured globally.
+
+GitHub-provided variables such as `GITHUB_SHA`, `GITHUB_RUN_ID`, `RUNNER_OS` and `RUNNER_ARCH` are platform-owned and are intentionally excluded from the operator configuration surface.
