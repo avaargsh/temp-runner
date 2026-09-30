@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: avaargsh/agentic-aiops
-          ref: ${{ inputs.aiops_ref || 'feat/bind-deployment-authority' }}
+          ref: ${{ inputs.aiops_ref || 'main' }}
           path: workspace/agentic-aiops
 
       - name: Checkout agent-decision-lab
@@ -67,6 +67,7 @@ jobs:
         with:
           repository: avaargsh/agent-control-plane
           ref: ${{ inputs.control_plane_ref || 'feat/fleet-authority-admission' }}
+          token: ${{ secrets.CONTROL_PLANE_TOKEN || github.token }}
           path: workspace/agent-control-plane
 
       - name: Install kind
