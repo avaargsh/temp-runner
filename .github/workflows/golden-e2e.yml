@@ -62,6 +62,15 @@ jobs:
           ref: ${{ inputs.runtime_ref || 'main' }}
           path: workspace/cloud-agent-runtime
 
+      - name: Validate private repository credential
+        env:
+          AGENT_STACK_GITHUB_TOKEN: ${{ secrets.AGENT_STACK_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$AGENT_STACK_GITHUB_TOKEN" ]; then
+            echo "::error::AGENT_STACK_GITHUB_TOKEN is required while agent-control-plane is private"
+            exit 2
+          fi
+
       - name: Checkout agent-control-plane
         uses: actions/checkout@v4
         with:
