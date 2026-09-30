@@ -2,6 +2,18 @@
 
 This file is the cross-repository source of truth for environment-variable naming.
 
+## GitHub repository secrets to configure today
+
+| Repository | Secret | Status |
+| --- | --- | --- |
+| `avaargsh/temp-runner` | `AGENT_STACK_GITHUB_TOKEN` | **Required now** because the E2E checks out private `agent-control-plane`. |
+| `avaargsh/agentic-aiops` | `AGENT_STACK_GITHUB_TOKEN` | **Required to enable** `four-repo-acceptance`; without it that job is skipped. |
+| `avaargsh/agent-decision-lab` | `HF_TOKEN` | Optional; only needed for gated/private Hugging Face models. |
+| `avaargsh/cloud-agent-runtime` | none | No repository secret currently consumed. |
+| `avaargsh/agent-control-plane` | none | No repository secret currently consumed by its workflows. |
+
+For the current repository visibility, `AGENT_STACK_GITHUB_TOKEN` only needs access to `avaargsh/agent-control-plane` with **Contents: read**. Metadata read is implicit. Do not grant write/admin permissions just for cross-repo checkout.
+
 ## Secrets and credentials
 
 | Variable | Required | Scope | Notes |
