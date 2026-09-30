@@ -2,7 +2,7 @@
 
 Public disposable integration harness for the Golden Incident reference stack.
 
-This repository owns **experiments, not product code**. It checks out the three source repositories at explicit refs and runs integration/E2E experiments on an ephemeral GitHub-hosted runner.
+This repository owns **experiments, not product code**. It checks out the four source repositories at immutable refs from `stack-lock.json` and runs integration/E2E experiments on an ephemeral GitHub-hosted runner.
 
 ## Golden Incident stack
 
@@ -22,7 +22,7 @@ kind -> workload/load -> evidence -> decision -> WAIT_APPROVAL
 
 ## Rules
 
-1. Pin source refs in the workflow when reproducing an experiment.
+1. Pin accepted source refs in `stack-lock.json`; manual workflow overrides are experimental only.
 2. Never copy implementation code from the three source repositories here.
 3. Upload logs and state snapshots as Actions artifacts.
 4. A green unit test in a source repository is not an E2E claim.
@@ -51,4 +51,4 @@ The P0 baseline is intentionally narrow and frozen:
 
 The `golden-e2e` workflow runs on pull requests and pushes to `main`, in addition to manual dispatch. New features must not weaken or bypass this baseline.
 
-Because `agent-control-plane` is currently private, cross-repository runs need a `AGENT_STACK_GITHUB_TOKEN` repository secret with read access to every private repository referenced by the stack. The workflow falls back to the normal GitHub token, which is sufficient if the control-plane repository later becomes public.
+All four currently locked source repositories are public, so the normal GitHub Actions token is sufficient. `AGENT_STACK_GITHUB_TOKEN` is only needed if a future locked source becomes private.
