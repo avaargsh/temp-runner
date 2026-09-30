@@ -51,4 +51,4 @@ The P0 baseline is intentionally narrow and frozen:
 
 The `golden-e2e` workflow runs on pull requests and pushes to `main`, in addition to manual dispatch. New features must not weaken or bypass this baseline.
 
-Because `agent-control-plane` is currently private, cross-repository runs need a `CONTROL_PLANE_TOKEN` repository secret with read access to that repository. The workflow falls back to the normal GitHub token, which is sufficient if the control-plane repository later becomes public.
+Because `agent-control-plane` is currently private, cross-repository runs need a `AGENT_STACK_GITHUB_TOKEN` repository secret with read access to every private repository referenced by the stack. The workflow falls back to the normal GitHub token, which is sufficient if the control-plane repository later becomes public.
