@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: avaargsh/agentic-aiops
-          ref: ${{ inputs.aiops_ref || 'feat/operation-reconciliation' }}
+          ref: ${{ inputs.aiops_ref || 'feat/bind-deployment-authority' }}
           path: workspace/agentic-aiops
 
       - name: Checkout agent-decision-lab
@@ -66,7 +66,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: avaargsh/agent-control-plane
-          ref: ${{ inputs.control_plane_ref || 'feat/operation-provenance-gate' }}
+          ref: ${{ inputs.control_plane_ref || 'feat/fleet-authority-admission' }}
           path: workspace/agent-control-plane
 
       - name: Install kind
@@ -95,7 +95,9 @@ jobs:
       - name: Validate source contracts
         working-directory: workspace/agentic-aiops
         run: |
-          pytest -q tests/test_golden_demo_assets.py tests/test_live_remediation.py tests/test_live_temporal_contract.py
+          pytest -q tests/test_golden_demo_assets.py tests/test_live_remediation.py tests/test_live_temporal_contract.py tests/test_authority_chain.py
+          cd ../agent-control-plane
+          pytest -q tests/test_authority.py tests/test_authority_cli.py tests/test_release_gate.py
 
       - name: Run Golden Incident E2E
         working-directory: workspace/agentic-aiops
@@ -105,6 +107,7 @@ jobs:
           DECISION_GATEWAY_URL: http://127.0.0.1:8080
           PROMETHEUS_URL: http://127.0.0.1:19090
           KUBERNETES_API: http://127.0.0.1:18001
+          AGENT_RELEASE_NAME: checkout-remediator-v2
         run: |
           set -euo pipefail
           RUN_ID="golden-ci-$GITHUB_RUN_ID"
@@ -134,6 +137,24 @@ jobs:
             return 1
           }
           temporal_ready
+
+          # Deployment-time authority inventory + drift admission.
+          printf '%s\n' '{"apiVersion":"agentplane.io/v1alpha1","kind":"AgentAuthorityEnvelope","metadata":{"name":"checkout-remediator-prod"},"spec":{"fleetRef":"sre-prod","teamRef":"team://sre-platform","agentRef":"checkout-remediator","releaseRef":"checkout-remediator-v1","runtimeRefs":["temporal://prod/checkout-remediator","sandbox://prod/checkout-remediator"],"grants":[{"effect":"read","capability":"kubernetes.read","resource":"kubernetes://prod/checkout/*","verbs":["get","list"]},{"effect":"write","capability":"kubernetes.scale","resource":"kubernetes://prod/checkout/deployment/checkout-api","verbs":["scale"]}],"constraints":{"approvalMode":"human-exact","evidenceRequired":true,"maxOperationsPerRun":1}}}' > /tmp/authority-baseline.json
+          printf '%s\n' '{"apiVersion":"agentplane.io/v1alpha1","kind":"AgentAuthorityEnvelope","metadata":{"name":"checkout-remediator-prod"},"spec":{"fleetRef":"sre-prod","teamRef":"team://sre-platform","agentRef":"checkout-remediator","releaseRef":"checkout-remediator-v2","runtimeRefs":["temporal://prod/checkout-remediator","sandbox://prod/checkout-remediator"],"grants":[{"effect":"read","capability":"kubernetes.read","resource":"kubernetes://prod/checkout/*","verbs":["get","list"]},{"effect":"write","capability":"kubernetes.scale","resource":"kubernetes://prod/checkout/deployment/checkout-api","verbs":["scale"]}],"constraints":{"approvalMode":"human-exact","evidenceRequired":true,"maxOperationsPerRun":1}}}' > /tmp/authority-proposed.json
+          printf '%s\n' '{"apiVersion":"agentplane.io/v1alpha1","kind":"AgentAuthorityEnvelope","metadata":{"name":"checkout-remediator-prod"},"spec":{"fleetRef":"sre-prod","teamRef":"team://sre-platform","agentRef":"checkout-remediator","releaseRef":"checkout-remediator-v2","runtimeRefs":["temporal://prod/checkout-remediator","sandbox://prod/checkout-remediator"],"grants":[{"effect":"read","capability":"kubernetes.read","resource":"kubernetes://prod/checkout/*","verbs":["get","list"]},{"effect":"write","capability":"kubernetes.scale","resource":"kubernetes://prod/checkout/deployment/checkout-api","verbs":["scale"]},{"effect":"write","capability":"kubernetes.delete","resource":"kubernetes://prod/checkout/pod/*","verbs":["delete"]}],"constraints":{"approvalMode":"human-exact","evidenceRequired":true,"maxOperationsPerRun":1}}}' > /tmp/authority-expanded.json
+
+          agent-control-plane authority-inventory /tmp/authority-proposed.json | tee /tmp/authority-inventory.json
+          agent-control-plane authority-admit /tmp/authority-proposed.json --baseline /tmp/authority-baseline.json | tee /tmp/authority-admission.json
+          grep -q '"decision": "ADMIT"' /tmp/authority-admission.json
+          export AGENT_AUTHORITY_DIGEST="$(python -c 'import json; print(json.load(open("/tmp/authority-admission.json"))["proposed_digest"])')"
+
+          set +e
+          agent-control-plane authority-admit /tmp/authority-expanded.json --baseline /tmp/authority-baseline.json > /tmp/authority-deny.json 2>&1
+          AUTHORITY_DENY_RC=$?
+          set -e
+          test "$AUTHORITY_DENY_RC" = "3"
+          grep -q '"decision": "DENY"' /tmp/authority-deny.json
+          grep -q 'AUTHORITY_EXPANSION' /tmp/authority-deny.json
 
           kubectl -n golden-demo scale deploy/load-generator --replicas=1
           kubectl -n golden-demo rollout status deploy/load-generator --timeout=120s
@@ -189,7 +210,8 @@ PY
           test -s ".golden-runs/$RUN_ID/acceptance-metrics.json"
           agent-control-plane gate demo/control-plane/golden-eval-gate.yaml \
             --metrics ".golden-runs/$RUN_ID/acceptance-metrics.json" \
-            --evidence ".golden-runs/$RUN_ID/release-evidence.json" | tee /tmp/release-gate.json
+            --evidence ".golden-runs/$RUN_ID/release-evidence.json" \
+            --authority-digest "$AGENT_AUTHORITY_DIGEST" | tee /tmp/release-gate.json
           grep -q '"decision": "PROMOTE"' /tmp/release-gate.json
           python - <<'PY'
 import json, pathlib
@@ -199,6 +221,8 @@ d=json.load(open(run_dirs[0]/"release-evidence.json"))
 assert d["operation_id"], d
 assert d["operation_phase"]=="VERIFIED", d
 assert d["operation_evidence_refs"], d
+assert d["operation_approval_id"], d
+assert d["authority_digest"], d
 PY
 
           # Negative control: a correctly sealed but non-VERIFIED operation
@@ -217,7 +241,8 @@ PY
           set +e
           agent-control-plane gate demo/control-plane/golden-eval-gate.yaml \
             --metrics ".golden-runs/$RUN_ID/acceptance-metrics.json" \
-            --evidence /tmp/release-evidence-operation-block.json > /tmp/operation-gate.json 2>&1
+            --evidence /tmp/release-evidence-operation-block.json \
+            --authority-digest "$AGENT_AUTHORITY_DIGEST" > /tmp/operation-gate.json 2>&1
           OPERATION_GATE_RC=$?
           set -e
           grep -q '"decision": "BLOCK"' /tmp/operation-gate.json
@@ -225,6 +250,31 @@ PY
           # BLOCK is the semantic invariant. Record the current CLI exit-code
           # contract without coupling this system proof to it.
           printf '%s\n' "$OPERATION_GATE_RC" > /tmp/operation-gate.exitcode
+
+
+          # Negative control: correctly sealed evidence from another admitted
+          # authority identity must not promote this release.
+          cp ".golden-runs/$RUN_ID/release-evidence.json" /tmp/release-evidence-authority-mismatch.json
+          python - <<'PY'
+import hashlib, json
+p="/tmp/release-evidence-authority-mismatch.json"
+d=json.load(open(p))
+d["authority_digest"]="sha256:" + "b" * 64
+payload={k:v for k,v in d.items() if k!="replay_digest"}
+encoded=json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+d["replay_digest"]="sha256:"+hashlib.sha256(encoded).hexdigest()
+json.dump(d, open(p,"w"), indent=2)
+PY
+          set +e
+          agent-control-plane gate demo/control-plane/golden-eval-gate.yaml \
+            --metrics ".golden-runs/$RUN_ID/acceptance-metrics.json" \
+            --evidence /tmp/release-evidence-authority-mismatch.json \
+            --authority-digest "$AGENT_AUTHORITY_DIGEST" > /tmp/authority-mismatch-gate.json 2>&1
+          AUTHORITY_MISMATCH_RC=$?
+          set -e
+          grep -q '"decision": "BLOCK"' /tmp/authority-mismatch-gate.json
+          grep -q '"reason": "AUTHORITY_DIGEST_MISMATCH"' /tmp/authority-mismatch-gate.json
+          printf '%s\n' "$AUTHORITY_MISMATCH_RC" > /tmp/authority-mismatch-gate.exitcode
 
           # Negative control: mutation of sealed release evidence must fail closed.
           cp ".golden-runs/$RUN_ID/release-evidence.json" /tmp/release-evidence-mutated.json
@@ -238,7 +288,8 @@ PY
           set +e
           agent-control-plane gate demo/control-plane/golden-eval-gate.yaml \
             --metrics ".golden-runs/$RUN_ID/acceptance-metrics.json" \
-            --evidence /tmp/release-evidence-mutated.json > /tmp/mutation-gate.json 2>&1
+            --evidence /tmp/release-evidence-mutated.json \
+            --authority-digest "$AGENT_AUTHORITY_DIGEST" > /tmp/mutation-gate.json 2>&1
           MUTATION_GATE_RC=$?
           set -e
           grep -q '"decision": "BLOCK"' /tmp/mutation-gate.json
@@ -247,7 +298,7 @@ PY
 
           mkdir -p ../../artifacts/run
           cp -R ".golden-runs/$RUN_ID" ../../artifacts/run/
-          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/duplicate-approval.json /tmp/after-duplicate-approval.json /tmp/continue.json /tmp/complete.json /tmp/retry-continue.json /tmp/release-gate.json /tmp/operation-gate.json /tmp/operation-gate.exitcode /tmp/mutation-gate.json /tmp/mutation-gate.exitcode ../../artifacts/run/
+          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/duplicate-approval.json /tmp/after-duplicate-approval.json /tmp/continue.json /tmp/complete.json /tmp/retry-continue.json /tmp/release-gate.json /tmp/operation-gate.json /tmp/operation-gate.exitcode /tmp/authority-inventory.json /tmp/authority-admission.json /tmp/authority-deny.json /tmp/authority-mismatch-gate.json /tmp/authority-mismatch-gate.exitcode /tmp/mutation-gate.json /tmp/mutation-gate.exitcode ../../artifacts/run/
 
       - name: Capture diagnostics
         if: always()
