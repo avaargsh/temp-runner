@@ -22,7 +22,7 @@ kind -> workload/load -> evidence -> decision -> WAIT_APPROVAL
 
 ## Rules
 
-1. Pin source refs in the workflow when reproducing an experiment.
+1. Pin exact source commit SHAs in `stack-lock.json`; mutable branches are not release inputs.
 2. Never copy implementation code from the three source repositories here.
 3. Upload logs and state snapshots as Actions artifacts.
 4. A green unit test in a source repository is not an E2E claim.
@@ -51,4 +51,12 @@ The P0 baseline is intentionally narrow and frozen:
 
 The `golden-e2e` workflow runs on pull requests and pushes to `main`, in addition to manual dispatch. New features must not weaken or bypass this baseline.
 
-Because `agent-control-plane` is currently private, cross-repository runs need a `AGENT_STACK_GITHUB_TOKEN` repository secret with read access to every private repository referenced by the stack. The workflow falls back to the normal GitHub token, which is sufficient if the control-plane repository later becomes public.
+All four locked source repositories are currently public, so the normal GitHub token is sufficient. `AGENT_STACK_GITHUB_TOKEN` is only needed if a future locked source repository is private; when used, keep it read-only and scoped to the required repositories.
+
+
+## Immutable stack lock
+
+The Golden Stack is defined by [`stack-lock.json`](stack-lock.json). The E2E
+workflow validates that lock and checks out those exact source commits before
+running the incident. Updating the accepted stack is therefore a reviewed
+lock-file change rather than an implicit move of a `main` branch.
