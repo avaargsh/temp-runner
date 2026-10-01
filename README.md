@@ -40,7 +40,8 @@ The P0 baseline is intentionally narrow and frozen:
 - the admitted authority digest is frozen into evidence, decision, operation, and release evidence;
 - only the exact frozen-action approval may authorize the Kubernetes write;
 - duplicate delivery of that same approval ID must be deduplicated to one durable approval event;
-- retry after a completed side effect must reuse the one durable action receipt and leave the desired replica count unchanged;
+- provider lost-ACK recovery must prove ownership with a matching provider-visible operation ID, avoid duplicate mutation, and fail closed on a concurrent creator;
+- terminal replay after a completed side effect must reuse the one durable action receipt, avoid runtime re-attach, and leave the desired replica count unchanged;
 - `checkout-api` then scales from 2 to 4 ready replicas;
 - Prometheus post-action verification passes;
 - remediation reaches `VERIFIED` without rollback;
