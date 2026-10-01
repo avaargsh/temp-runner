@@ -182,14 +182,16 @@ jobs:
           grep -q '"terminal": true' /tmp/complete.json
           grep -q '"phase": "succeeded"' /tmp/complete.json
 
-          # Retry after the side effect + receipt are durable. This must reuse
-          # the same receipt rather than issue a second Kubernetes mutation.
+          # Replay after the side effect + receipt are durable. Terminal workflow
+          # identity stays terminal: replay is read-only and must not attach to
+          # Temporal or issue a second Kubernetes mutation.
           RECEIPT=$(find ".golden-runs/$RUN_ID/actions" -type f -name '*.json')
           test "$(printf '%s\n' "$RECEIPT" | sed '/^$/d' | wc -l)" = "1"
           RECEIPT_SHA_BEFORE=$(sha256sum "$RECEIPT" | awk '{print $1}')
-          python examples/live_golden_incident.py continue --run-id "$RUN_ID" | tee /tmp/retry-continue.json
+          python examples/live_golden_incident.py replay --run-id "$RUN_ID" | tee /tmp/replay.json
           RECEIPT_SHA_AFTER=$(sha256sum "$RECEIPT" | awk '{print $1}')
           test "$RECEIPT_SHA_BEFORE" = "$RECEIPT_SHA_AFTER"
+          grep -q '"status": "VERIFIED"' /tmp/replay.json
           test "$(kubectl -n golden-demo get deploy checkout-api -o jsonpath='{.spec.replicas}')" = "4"
 
           # The producer seals per-run acceptance evidence; the Control Plane
@@ -286,7 +288,7 @@ jobs:
 
           mkdir -p ../../artifacts/run
           cp -R ".golden-runs/$RUN_ID" ../../artifacts/run/
-          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/duplicate-approval.json /tmp/after-duplicate-approval.json /tmp/continue.json /tmp/complete.json /tmp/retry-continue.json /tmp/release-gate.json /tmp/operation-gate.json /tmp/operation-gate.exitcode /tmp/authority-inventory.json /tmp/authority-admission.json /tmp/authority-deny.json /tmp/authority-mismatch-gate.json /tmp/authority-mismatch-gate.exitcode /tmp/mutation-gate.json /tmp/mutation-gate.exitcode ../../artifacts/run/
+          cp /tmp/start.json /tmp/waiting.json /tmp/wrong-approval.json /tmp/after-wrong-approval.json /tmp/still-waiting.json /tmp/approval.json /tmp/duplicate-approval.json /tmp/after-duplicate-approval.json /tmp/continue.json /tmp/complete.json /tmp/replay.json /tmp/release-gate.json /tmp/operation-gate.json /tmp/operation-gate.exitcode /tmp/authority-inventory.json /tmp/authority-admission.json /tmp/authority-deny.json /tmp/authority-mismatch-gate.json /tmp/authority-mismatch-gate.exitcode /tmp/mutation-gate.json /tmp/mutation-gate.exitcode ../../artifacts/run/
 
       - name: Capture diagnostics
         if: always()
