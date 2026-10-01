@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "repositories": {
+    "agentic-aiops": {
+      "repository": "avaargsh/agentic-aiops",
+      "sha": "0fe10c0e17456541a7cf5de522c077f03164b726"
+    },
+    "agent-decision-lab": {
+      "repository": "avaargsh/agent-decision-lab",
+      "sha": "13303e2b2194089e8e8982da8cb7883a0806c5e8"
+    },
+    "cloud-agent-runtime": {
+      "repository": "avaargsh/cloud-agent-runtime",
+      "sha": "67764ea68c69a4fd7842e101cdbc5f98c216a81f"
+    },
+    "agent-control-plane": {
+      "repository": "avaargsh/agent-control-plane",
+      "sha": "0fce6b36be425b7fde0babc527a99136cda0d281"
+    }
+  }
+}
