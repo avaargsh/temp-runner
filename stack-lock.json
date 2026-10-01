@@ -3,7 +3,7 @@
   "repositories": {
     "agentic-aiops": {
       "repository": "avaargsh/agentic-aiops",
-      "sha": "e45f11eea2301ca6de88d9731882e009939c0242"
+      "sha": "025a607c156c51c4fbbe5a334ee1ac308fcc887c"
     },
     "agent-decision-lab": {
       "repository": "avaargsh/agent-decision-lab",
