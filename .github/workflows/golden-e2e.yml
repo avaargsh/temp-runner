@@ -87,6 +87,45 @@ jobs:
           cd ../agent-control-plane
           pytest -q tests/test_authority.py tests/test_authority_cli.py tests/test_release_gate.py
 
+      - name: Prove uncertain ACK ownership recovery
+        working-directory: workspace/agent-control-plane
+        run: |
+          set -euo pipefail
+          pytest -q \
+            tests/test_kubernetes_runtime_client.py::test_kubernetes_client_recovers_create_receipt_after_lost_ack \
+            tests/test_kubernetes_runtime_client.py::test_kubernetes_client_does_not_claim_concurrent_resource_after_lost_ack \
+            tests/test_temporal_runtime_client.py::test_temporal_client_recovers_start_receipt_after_lost_ack \
+            tests/test_temporal_runtime_client.py::test_temporal_client_does_not_claim_concurrent_workflow_after_lost_ack
+          python - <<'PY'
+          import json
+          import pathlib
+          import subprocess
+
+          tests = [
+              "kubernetes:create-lost-ack",
+              "kubernetes:concurrent-owner-conflict",
+              "temporal:start-lost-ack",
+              "temporal:concurrent-owner-conflict",
+          ]
+          payload = {
+              "schema_version": 1,
+              "scenario": "provider mutation may commit before transport ACK is observed",
+              "result": "PASS",
+              "control_plane_sha": subprocess.check_output(
+                  ["git", "rev-parse", "HEAD"], text=True
+              ).strip(),
+              "invariants": [
+                  "recovered receipt requires the provider-visible operation_id to match",
+                  "the same provider mutation is not issued twice after a lost ACK",
+                  "a concurrent creator with a different operation_id fails closed",
+              ],
+              "tests": tests,
+          }
+          path = pathlib.Path("../../artifacts/uncertain-ack-evidence.json")
+          path.parent.mkdir(parents=True, exist_ok=True)
+          path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+          PY
+
       - name: Run Golden Incident E2E
         working-directory: workspace/agentic-aiops
         env:
