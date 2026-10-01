@@ -8,23 +8,6 @@ on:
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
-    inputs:
-      aiops_ref:
-        description: agentic-aiops ref
-        required: true
-        default: main
-      decision_ref:
-        description: agent-decision-lab ref
-        required: true
-        default: main
-      runtime_ref:
-        description: cloud-agent-runtime ref
-        required: true
-        default: main
-      control_plane_ref:
-        description: agent-control-plane ref
-        required: true
-        default: main
 
 permissions:
   contents: read
@@ -41,41 +24,36 @@ jobs:
         id: runner-ref
         run: echo "runner_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Read immutable stack lock
+        id: stack-lock
+        run: python scripts/emit_stack_lock.py --github-output "$GITHUB_OUTPUT"
+
       - name: Checkout agentic-aiops
         uses: actions/checkout@v4
         with:
           repository: avaargsh/agentic-aiops
-          ref: ${{ inputs.aiops_ref || 'main' }}
+          ref: ${{ steps.stack-lock.outputs.aiops_ref }}
           path: workspace/agentic-aiops
 
       - name: Checkout agent-decision-lab
         uses: actions/checkout@v4
         with:
           repository: avaargsh/agent-decision-lab
-          ref: ${{ inputs.decision_ref || 'main' }}
+          ref: ${{ steps.stack-lock.outputs.decision_ref }}
           path: workspace/agent-decision-lab
 
       - name: Checkout cloud-agent-runtime
         uses: actions/checkout@v4
         with:
           repository: avaargsh/cloud-agent-runtime
-          ref: ${{ inputs.runtime_ref || 'main' }}
+          ref: ${{ steps.stack-lock.outputs.runtime_ref }}
           path: workspace/cloud-agent-runtime
-
-      - name: Validate private repository credential
-        env:
-          AGENT_STACK_GITHUB_TOKEN: ${{ secrets.AGENT_STACK_GITHUB_TOKEN }}
-        run: |
-          if [ -z "$AGENT_STACK_GITHUB_TOKEN" ]; then
-            echo "::error::AGENT_STACK_GITHUB_TOKEN is required while agent-control-plane is private"
-            exit 2
-          fi
 
       - name: Checkout agent-control-plane
         uses: actions/checkout@v4
         with:
           repository: avaargsh/agent-control-plane
-          ref: ${{ inputs.control_plane_ref || 'main' }}
+          ref: ${{ steps.stack-lock.outputs.control_plane_ref }}
           token: ${{ secrets.AGENT_STACK_GITHUB_TOKEN || github.token }}
           path: workspace/agent-control-plane
 
