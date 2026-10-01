@@ -6,13 +6,13 @@ This file is the cross-repository source of truth for environment-variable namin
 
 | Repository | Secret | Status |
 | --- | --- | --- |
-| `avaargsh/temp-runner` | `AGENT_STACK_GITHUB_TOKEN` | **Required now** because the E2E checks out private `agent-control-plane`. |
+| `avaargsh/temp-runner` | `AGENT_STACK_GITHUB_TOKEN` | Optional while every locked source repo is public; required only if a locked repo becomes private. |
 | `avaargsh/agentic-aiops` | `AGENT_STACK_GITHUB_TOKEN` | **Required to enable** `four-repo-acceptance`; without it that job is skipped. |
 | `avaargsh/agent-decision-lab` | `HF_TOKEN` | Optional; only needed for gated/private Hugging Face models. |
 | `avaargsh/cloud-agent-runtime` | none | No repository secret currently consumed. |
 | `avaargsh/agent-control-plane` | none | No repository secret currently consumed by its workflows. |
 
-For the current repository visibility, `AGENT_STACK_GITHUB_TOKEN` only needs access to `avaargsh/agent-control-plane` with **Contents: read**. Metadata read is implicit. Do not grant write/admin permissions just for cross-repo checkout.
+For the current public repository visibility, the Golden E2E does not require a custom repository token. If a locked source repo becomes private, configure `AGENT_STACK_GITHUB_TOKEN` with read-only **Contents** access to that repo; metadata read is implicit. Do not grant write/admin permissions just for cross-repo checkout.
 
 ## Secrets and credentials
 
@@ -64,3 +64,14 @@ The old CI secret names `GOLDEN_STACK_REPO_TOKEN` and `CONTROL_PLANE_TOKEN` are 
 The Decision Lab model benchmark maps workflow inputs into `MODEL`, `CALIBRATION` and `TEST_DATASET`. These are job-local values, not repository secrets and do not need to be configured globally.
 
 GitHub-provided variables such as `GITHUB_SHA`, `GITHUB_RUN_ID`, `RUNNER_OS` and `RUNNER_ARCH` are platform-owned and are intentionally excluded from the operator configuration surface.
+
+
+## Immutable source lock
+
+`stack-lock.json` is the release-facing source of truth for the four source
+repositories used by `golden-e2e`. Normal PR, push, scheduled, and manually
+dispatched runs all consume the exact 40-character commit SHAs in that file.
+
+Updating a source component for Golden Stack acceptance therefore requires a
+reviewable lock-file change. A mutable branch name such as `main` is not a
+release input.
