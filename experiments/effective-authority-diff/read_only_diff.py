@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import tomllib
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Mapping
@@ -18,44 +19,51 @@ def _namespace(obj: Mapping[str, Any]) -> str:
     return str(obj.get("metadata", {}).get("namespace") or "default")
 
 
-def _load_k8s(text: str) -> tuple[dict[str, str], dict[str, set[str]]]:
+def _load_k8s(files: Mapping[str, str]) -> tuple[dict[str, str], dict[str, set[str]]]:
     workloads: dict[str, str] = {}
     roles: dict[tuple[str, str, str], set[str]] = {}
     bindings: list[tuple[str, str, str, list[Mapping[str, Any]]]] = []
 
-    for obj in yaml.safe_load_all(text or ""):
-        if not isinstance(obj, dict):
+    for path, text in files.items():
+        if not path.endswith((".yaml", ".yml")):
             continue
-        kind = str(obj.get("kind") or "")
-        ns = _namespace(obj)
-        name = str(obj.get("metadata", {}).get("name") or "")
-        if kind == "Deployment":
-            sa = (
-                obj.get("spec", {})
-                .get("template", {})
-                .get("spec", {})
-                .get("serviceAccountName", "default")
-            )
-            workloads[f"k8s://{ns}/deployment/{name}"] = f"sa:{ns}/{sa}"
-        elif kind in {"Role", "ClusterRole"}:
-            key = (kind, ns if kind == "Role" else "*", name)
-            outcomes: set[str] = set()
-            for rule in obj.get("rules", []) or []:
-                resources = rule.get("resources", []) or []
-                verbs = rule.get("verbs", []) or []
-                names = rule.get("resourceNames") or ["*"]
-                for resource in resources:
-                    for verb in verbs:
-                        action = "read" if verb in {"get", "list", "watch"} else str(verb)
-                        for scope in names:
-                            outcomes.add(f"k8s.{action}.{resource}:{scope}")
-            roles[key] = outcomes
-        elif kind in {"RoleBinding", "ClusterRoleBinding"}:
-            ref = obj.get("roleRef", {}) or {}
-            ref_kind = str(ref.get("kind") or "")
-            ref_name = str(ref.get("name") or "")
-            ref_ns = ns if ref_kind == "Role" else "*"
-            bindings.append((ref_kind, ref_ns, ref_name, obj.get("subjects", []) or []))
+        try:
+            docs = list(yaml.safe_load_all(text or ""))
+        except yaml.YAMLError:
+            continue
+        for obj in docs:
+            if not isinstance(obj, dict):
+                continue
+            kind = str(obj.get("kind") or "")
+            ns = _namespace(obj)
+            name = str(obj.get("metadata", {}).get("name") or "")
+            if kind == "Deployment":
+                sa = (
+                    obj.get("spec", {})
+                    .get("template", {})
+                    .get("spec", {})
+                    .get("serviceAccountName", "default")
+                )
+                workloads[f"k8s://{ns}/deployment/{name}"] = f"sa:{ns}/{sa}"
+            elif kind in {"Role", "ClusterRole"}:
+                key = (kind, ns if kind == "Role" else "*", name)
+                outcomes: set[str] = set()
+                for rule in obj.get("rules", []) or []:
+                    resources = rule.get("resources", []) or []
+                    verbs = rule.get("verbs", []) or []
+                    names = rule.get("resourceNames") or ["*"]
+                    for resource in resources:
+                        for verb in verbs:
+                            action = "read" if verb in {"get", "list", "watch"} else str(verb)
+                            for scope in names:
+                                outcomes.add(f"k8s.{action}.{resource}:{scope}")
+                roles[key] = outcomes
+            elif kind in {"RoleBinding", "ClusterRoleBinding"}:
+                ref = obj.get("roleRef", {}) or {}
+                ref_kind = str(ref.get("kind") or "")
+                ref_name = str(ref.get("name") or "")
+                ref_ns = ns if ref_kind == "Role" else "*"
+                bindings.append((ref_kind, ref_ns, ref_name, obj.get("subjects", []) or []))
 
     grants: dict[str, set[str]] = defaultdict(set)
     for ref_kind, ref_ns, ref_name, subjects in bindings:
@@ -69,58 +77,105 @@ def _load_k8s(text: str) -> tuple[dict[str, str], dict[str, set[str]]]:
     return workloads, grants
 
 
-def _load_runs(text: str) -> dict[str, str]:
-    if not text:
-        return {}
-    data = json.loads(text)
-    runs = data.get("runs", []) if isinstance(data, dict) else []
+def _load_runs(files: Mapping[str, str]) -> dict[str, str]:
     result: dict[str, str] = {}
-    for run in runs:
-        run_id = str(run.get("run_id") or "")
-        binding = run.get("sandbox_binding") or {}
-        sandbox_ref = str(binding.get("sandbox_ref") or "")
-        if run_id and sandbox_ref:
-            result[run_id] = sandbox_ref
+    for path, text in files.items():
+        if not path.endswith(".json") or "runtime" not in path:
+            continue
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError:
+            continue
+        runs = data.get("runs", []) if isinstance(data, dict) else []
+        for run in runs:
+            run_id = str(run.get("run_id") or "")
+            binding = run.get("sandbox_binding") or {}
+            sandbox_ref = str(binding.get("sandbox_ref") or "")
+            if run_id and sandbox_ref:
+                result[run_id] = sandbox_ref
     return result
 
 
-def _mcp_outcomes(text: str) -> set[str]:
-    if not text:
-        return set()
-    data = json.loads(text)
-    servers = data.get("mcpServers", {}) if isinstance(data, dict) else {}
+def _server_outcomes(name: str, cfg: Mapping[str, Any]) -> set[str]:
     outcomes: set[str] = set()
-    for name, cfg in servers.items():
-        cfg = cfg or {}
-        command = str(cfg.get("command") or "")
-        args = [str(x) for x in (cfg.get("args") or [])]
-        joined = " ".join([str(name), command, *args]).lower()
-        if "kubernetes" in joined or "kubectl" in joined:
-            if "--read-only" in args:
-                outcomes.add("mcp.kubernetes.read:*")
+    command = str(cfg.get("command") or "")
+    args = [str(x) for x in (cfg.get("args") or [])]
+    joined = " ".join([name, command, *args]).lower()
+
+    if "kubernetes" in joined or "kubectl" in joined:
+        if "--read-only" in args:
+            outcomes.add("mcp.kubernetes.read:*")
+        else:
+            outcomes.add("mcp.kubernetes.write:*")
+
+    if any(path in joined for path in ("/etc", "/var/run/secrets", "/root")):
+        outcomes.add("host.read.sensitive:*")
+
+    enabled_tools = [str(x) for x in (cfg.get("enabled_tools") or cfg.get("enabledTools") or [])]
+    if "agent-context" in joined:
+        for tool in enabled_tools:
+            if tool.startswith(("get_", "list_", "read_")):
+                outcomes.add(f"mcp.agent-context.read:{tool}")
             else:
-                outcomes.add("mcp.kubernetes.write:*")
-        if any(path in joined for path in ("/etc", "/var/run/secrets", "/root")):
-            outcomes.add("host.read.sensitive:*")
+                outcomes.add(f"mcp.agent-context.write:{tool}")
     return outcomes
 
 
-def _approval_required(text: str) -> bool:
-    return bool(re.search(r"input\.(approved|approval)\s*(==\s*true)?", text or ""))
+def _mcp_outcomes(text: str, suffix: str) -> set[str]:
+    if not text:
+        return set()
+    try:
+        if suffix == ".toml":
+            data = tomllib.loads(text)
+            servers = data.get("mcp_servers", {}) if isinstance(data, dict) else {}
+        else:
+            data = json.loads(text)
+            servers = data.get("mcpServers", {}) if isinstance(data, dict) else {}
+    except (json.JSONDecodeError, tomllib.TOMLDecodeError):
+        return set()
+
+    outcomes: set[str] = set()
+    for name, cfg in servers.items():
+        if isinstance(cfg, dict):
+            outcomes.update(_server_outcomes(str(name), cfg))
+    return outcomes
+
+
+def _mcp_for_run(files: Mapping[str, str], run_id: str) -> set[str]:
+    outcomes: set[str] = set()
+    exact = (f"mcp.{run_id}.json", f"mcp.{run_id}.toml")
+    found_specific = False
+    for name in exact:
+        if name in files:
+            found_specific = True
+            outcomes.update(_mcp_outcomes(files[name], "." + name.rsplit(".", 1)[-1]))
+    if found_specific:
+        return outcomes
+    for name in ("mcp.json", "mcp.toml"):
+        if name in files:
+            outcomes.update(_mcp_outcomes(files[name], "." + name.rsplit(".", 1)[-1]))
+    return outcomes
+
+
+def _approval_required(files: Mapping[str, str]) -> bool:
+    rego = "\n".join(
+        text for path, text in sorted(files.items()) if path.endswith(".rego")
+    )
+    return bool(re.search(r"input\.(approved|approval)\s*(==\s*true)?", rego))
 
 
 def _writeish(outcome: str) -> bool:
     return outcome.startswith((
         "k8s.delete.", "k8s.create.", "k8s.update.", "k8s.patch.",
         "k8s.impersonate.", "k8s.escalate.", "k8s.bind.",
-        "mcp.kubernetes.write:", "composite.",
+        "mcp.kubernetes.write:", "mcp.agent-context.write:", "composite.",
     ))
 
 
 def build_profile(files: Mapping[str, str]) -> Profile:
-    workloads, grants = _load_k8s(files.get("k8s.yaml", ""))
-    runs = _load_runs(files.get("runtime.json", ""))
-    require_approval = _approval_required(files.get("policy.rego", ""))
+    workloads, grants = _load_k8s(files)
+    runs = _load_runs(files)
+    require_approval = _approval_required(files)
     by_outcome: dict[str, set[tuple[str, ...]]] = defaultdict(set)
 
     for run_id, sandbox_ref in runs.items():
@@ -128,9 +183,7 @@ def build_profile(files: Mapping[str, str]) -> Profile:
         sa = workloads.get(sandbox_ref)
         if sa:
             caps.update(grants.get(sa, set()))
-        specific = files.get(f"mcp.{run_id}.json")
-        generic = files.get("mcp.json")
-        caps.update(_mcp_outcomes(specific if specific is not None else (generic or "")))
+        caps.update(_mcp_for_run(files, run_id))
 
         if any(x.startswith("k8s.read.secrets:") for x in caps) and any(
             x.startswith("k8s.patch.deployments:") for x in caps
@@ -140,6 +193,10 @@ def build_profile(files: Mapping[str, str]) -> Profile:
             x.startswith("k8s.patch.deployments:") for x in caps
         ):
             caps.add("composite.host_secret_to_deployment:*")
+        if any(x.startswith("mcp.agent-context.write:") for x in caps) and any(
+            x.startswith("k8s.patch.deployments:") for x in caps
+        ):
+            caps.add("composite.shared_context_to_deployment:*")
 
         for outcome in caps:
             coalition = (f"run:{run_id}",)
