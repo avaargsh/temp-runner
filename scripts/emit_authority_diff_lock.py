@@ -9,6 +9,7 @@ _SHA = re.compile(r"^[0-9a-f]{40}$")
 _REQUIRED = {
     "agent-control-plane": "control_plane_ref",
     "cloud-agent-runtime": "runtime_ref",
+    "agentic-aiops": "aiops_ref",
 }
 
 
