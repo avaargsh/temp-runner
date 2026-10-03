@@ -100,7 +100,13 @@ def _server_outcomes(name: str, cfg: Mapping[str, Any]) -> set[str]:
     outcomes: set[str] = set()
     command = str(cfg.get("command") or "")
     args = [str(x) for x in (cfg.get("args") or [])]
-    env = cfg.get("env") or {}\n    env_values = [str(k) for k in env] + [str(v) for v in env.values()] if isinstance(env, dict) else []\n    joined = " ".join([name, command, *args, *env_values]).lower()
+    env = cfg.get("env") or {}
+    env_values = (
+        [str(k) for k in env] + [str(v) for v in env.values()]
+        if isinstance(env, dict)
+        else []
+    )
+    joined = " ".join([name, command, *args, *env_values]).lower()
 
     if "kubernetes" in joined or "kubectl" in joined:
         if "--read-only" in args:
