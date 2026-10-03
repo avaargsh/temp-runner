@@ -1,0 +1,75 @@
+name: authority-diff-kill-test
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kill-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout runner
+        uses: actions/checkout@v4
+
+      - name: Record immutable runner SHA
+        id: runner
+        run: echo "runner_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Read authority diff source lock
+        id: lock
+        run: python scripts/emit_authority_diff_lock.py --github-output "$GITHUB_OUTPUT"
+
+      - name: Checkout pinned agent-control-plane
+        uses: actions/checkout@v4
+        with:
+          repository: avaargsh/agent-control-plane
+          ref: ${{ steps.lock.outputs.control_plane_ref }}
+          path: workspace/agent-control-plane
+
+      - name: Checkout pinned cloud-agent-runtime
+        uses: actions/checkout@v4
+        with:
+          repository: avaargsh/cloud-agent-runtime
+          ref: ${{ steps.lock.outputs.runtime_ref }}
+          path: workspace/cloud-agent-runtime
+
+      - name: Verify borrowed source shapes
+        run: |
+          set -euo pipefail
+          grep -q 'class AuthorityGrant' workspace/agent-control-plane/src/agent_control_plane/authority.py
+          grep -q 'def build_authority_inventory' workspace/agent-control-plane/src/agent_control_plane/authority.py
+          grep -q 'class FrozenEvidence' workspace/agent-control-plane/src/agent_control_plane/frozen_evidence.py
+          grep -q 'class Run' workspace/cloud-agent-runtime/src/cloud_agent_runtime/models.py
+          grep -q 'class SandboxBinding' workspace/cloud-agent-runtime/src/cloud_agent_runtime/models.py
+          grep -q 'sandbox_ref:' workspace/cloud-agent-runtime/src/cloud_agent_runtime/models.py
+
+      - name: Run A vs B kill test
+        run: |
+          python -m pip install --disable-pip-version-check pyyaml
+          python experiments/effective-authority-diff/run.py
+          cat artifacts/effective-authority-diff/summary.txt
+
+      - name: Add immutable refs
+        if: always()
+        run: |
+          mkdir -p artifacts/effective-authority-diff
+          {
+            printf 'runner_sha=%s\n' "${{ steps.runner.outputs.runner_sha }}"
+            printf 'control_plane_sha=%s\n' "${{ steps.lock.outputs.control_plane_ref }}"
+            printf 'runtime_sha=%s\n' "${{ steps.lock.outputs.runtime_ref }}"
+          } > artifacts/effective-authority-diff/refs.txt
+
+      - name: Upload content-addressed experiment artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: effective-authority-diff-${{ github.run_id }}
+          path: artifacts/effective-authority-diff/
+          retention-days: 14
