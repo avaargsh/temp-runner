@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "repositories": {
+    "agent-control-plane": {
+      "repository": "avaargsh/agent-control-plane",
+      "sha": "dc178c02ed0ec4d2aeac43437696b4251c9e02ee"
+    },
+    "cloud-agent-runtime": {
+      "repository": "avaargsh/cloud-agent-runtime",
+      "sha": "67764ea68c69a4fd7842e101cdbc5f98c216a81f"
+    }
+  }
+}
