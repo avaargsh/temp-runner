@@ -8,6 +8,10 @@
     "cloud-agent-runtime": {
       "repository": "avaargsh/cloud-agent-runtime",
       "sha": "67764ea68c69a4fd7842e101cdbc5f98c216a81f"
+    },
+    "agentic-aiops": {
+      "repository": "avaargsh/agentic-aiops",
+      "sha": "025a607c156c51c4fbbe5a334ee1ac308fcc887c"
     }
   }
 }
