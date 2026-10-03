@@ -1,0 +1,437 @@
+schema_version: 1
+cases:
+  - id: rbac-add-delete
+    expected: dangerous
+    note: Direct RBAC verb expansion.
+    baseline:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec:
+          template:
+            spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: agent-role, namespace: default}
+        rules:
+          - apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["get", "list"]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: agent-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: agent-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: agent-role}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+    candidate:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec:
+          template:
+            spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: agent-role, namespace: default}
+        rules:
+          - apiGroups: [""]
+            resources: ["pods"]
+            verbs: ["get", "list", "delete"]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: agent-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: agent-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: agent-role}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+
+  - id: rbac-resource-widen
+    expected: dangerous
+    note: Same verb, wider reachable resource set.
+    baseline:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: scaler, namespace: default}
+        rules:
+          - apiGroups: ["apps"]
+            resources: ["deployments"]
+            resourceNames: ["checkout-api"]
+            verbs: ["patch"]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: scaler-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: agent-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: scaler}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+    candidate:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: scaler, namespace: default}
+        rules:
+          - apiGroups: ["apps"]
+            resources: ["deployments"]
+            verbs: ["patch"]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: scaler-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: agent-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: scaler}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+
+  - id: approval-weaken
+    expected: dangerous
+    note: Outcome unchanged, minimum required principal coalition shrinks.
+    baseline:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: deleter, namespace: default}
+        rules: [{apiGroups: [""], resources: ["pods"], verbs: ["delete"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: deleter-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: agent-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: deleter}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+      policy.rego: |
+        package agent.authz
+        default allow := false
+        allow if {
+          input.action == "delete"
+          input.approved == true
+        }
+    candidate:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: deleter, namespace: default}
+        rules: [{apiGroups: [""], resources: ["pods"], verbs: ["delete"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: deleter-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: agent-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: deleter}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+      policy.rego: |
+        package agent.authz
+        default allow := false
+        allow if {
+          input.action == "delete"
+        }
+
+  - id: mcp-readonly-removed
+    expected: dangerous
+    note: Existing MCP server becomes write-capable without a new server identity.
+    baseline:
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+      mcp.run-main.json: |
+        {"mcpServers":{"kubernetes":{"command":"kubernetes-mcp-server","args":["--read-only"]}}}
+    candidate:
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+      mcp.run-main.json: |
+        {"mcpServers":{"kubernetes":{"command":"kubernetes-mcp-server","args":[]}}}
+
+  - id: binding-subject-swap
+    expected: dangerous
+    note: Same Role; authority becomes reachable by the agent workload identity.
+    baseline:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: scaler, namespace: default}
+        rules: [{apiGroups: ["apps"], resources: ["deployments"], verbs: ["patch"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: scaler-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: reviewer-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: scaler}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+    candidate:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: scaler, namespace: default}
+        rules: [{apiGroups: ["apps"], resources: ["deployments"], verbs: ["patch"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: scaler-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: agent-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: scaler}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+
+  - id: workload-serviceaccount-rebind
+    expected: dangerous
+    note: Workload identity changes while RBAC objects themselves stay unchanged.
+    baseline:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: limited-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: secret-admin, namespace: default}
+        rules: [{apiGroups: [""], resources: ["secrets"], verbs: ["get", "delete"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: secret-admin-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: admin-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: secret-admin}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+    candidate:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: admin-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: secret-admin, namespace: default}
+        rules: [{apiGroups: [""], resources: ["secrets"], verbs: ["get", "delete"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: secret-admin-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: admin-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: secret-admin}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+
+  - id: sandbox-authority-replication
+    expected: dangerous
+    note: A delegated/spawned Run becomes an alternative holder of the same outcome authority.
+    baseline:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: scaler, namespace: default}
+        rules: [{apiGroups: ["apps"], resources: ["deployments"], verbs: ["patch"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: scaler-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: agent-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: scaler}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+    candidate:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: scaler, namespace: default}
+        rules: [{apiGroups: ["apps"], resources: ["deployments"], verbs: ["patch"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: scaler-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: agent-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: scaler}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}},{"run_id":"run-child","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+
+  - id: cross-source-runtime-composition
+    expected: dangerous
+    note: Runtime binding joins sensitive host-read authority with a deployment-write workload.
+    baseline:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: reader, namespace: default}
+        spec: {template: {spec: {serviceAccountName: reader-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: writer, namespace: default}
+        spec: {template: {spec: {serviceAccountName: writer-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: reader-role, namespace: default}
+        rules: [{apiGroups: [""], resources: ["pods"], verbs: ["get"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: writer-role, namespace: default}
+        rules: [{apiGroups: ["apps"], resources: ["deployments"], verbs: ["patch"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: reader-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: reader-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: reader-role}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: writer-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: writer-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: writer-role}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-r","sandbox_ref":"k8s://default/deployment/reader","revision":1}}]}
+      mcp.run-main.json: |
+        {"mcpServers":{"filesystem":{"command":"filesystem-mcp","args":["/etc"]}}}
+    candidate:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: reader, namespace: default}
+        spec: {template: {spec: {serviceAccountName: reader-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: writer, namespace: default}
+        spec: {template: {spec: {serviceAccountName: writer-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: reader-role, namespace: default}
+        rules: [{apiGroups: [""], resources: ["pods"], verbs: ["get"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: writer-role, namespace: default}
+        rules: [{apiGroups: ["apps"], resources: ["deployments"], verbs: ["patch"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: reader-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: reader-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: reader-role}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: writer-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: writer-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: writer-role}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-w","sandbox_ref":"k8s://default/deployment/writer","revision":2,"previous_refs":["k8s://default/deployment/reader"]}}]}
+      mcp.run-main.json: |
+        {"mcpServers":{"filesystem":{"command":"filesystem-mcp","args":["/etc"]}}}
+
+  - id: sandbox-id-rotation-benign
+    expected: benign
+    note: Disposable physical sandbox identity changes; authority-bearing sandbox_ref and workload stay fixed.
+    baseline:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"physical-a","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+    candidate:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"physical-b","sandbox_ref":"k8s://default/deployment/agent","revision":2,"previous_refs":["physical-a"]}}]}
+
+  - id: rbac-delete-removed-benign
+    expected: benign
+    note: Pure authority tightening.
+    baseline:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: agent-role, namespace: default}
+        rules: [{apiGroups: [""], resources: ["pods"], verbs: ["get", "delete"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: agent-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: agent-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: agent-role}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
+    candidate:
+      k8s.yaml: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata: {name: agent, namespace: default}
+        spec: {template: {spec: {serviceAccountName: agent-sa, containers: [{name: agent, image: example/agent@sha256:aaa}]}}}
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: Role
+        metadata: {name: agent-role, namespace: default}
+        rules: [{apiGroups: [""], resources: ["pods"], verbs: ["get"]}]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: RoleBinding
+        metadata: {name: agent-rb, namespace: default}
+        subjects: [{kind: ServiceAccount, name: agent-sa, namespace: default}]
+        roleRef: {apiGroup: rbac.authorization.k8s.io, kind: Role, name: agent-role}
+      runtime.json: |
+        {"runs":[{"run_id":"run-main","session_id":"s1","sandbox_binding":{"provider":"kubernetes","sandbox_id":"sb-1","sandbox_ref":"k8s://default/deployment/agent","revision":1}}]}
