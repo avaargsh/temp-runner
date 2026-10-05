@@ -54,7 +54,6 @@ jobs:
         with:
           repository: avaargsh/agent-control-plane
           ref: ${{ steps.stack-lock.outputs.control_plane_ref }}
-          token: ${{ secrets.AGENT_STACK_GITHUB_TOKEN || github.token }}
           path: workspace/agent-control-plane
 
       - name: Install kind
