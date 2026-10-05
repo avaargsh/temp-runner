@@ -1,6 +1,6 @@
 # Effective Authority Diff — admission capability interface draft
 
-Status: **interface draft only**. This does not add runtime enforcement, a new desired-state API, Binding DAG semantics, EvalGate behavior, or a StateTransition execution path.
+Status: **read-only experiment**. The artifact-binding interface now has an executable validator, but it still does not add runtime enforcement, a new desired-state API, Binding DAG semantics, EvalGate behavior, or a StateTransition execution path.
 
 ## Purpose
 
@@ -135,3 +135,17 @@ Round 1: A 5/8 (62.5%), B 8/8 (100%), benign FP 0/2 vs 0/2
 Round 2: A 4/8 (50.0%), B 8/8 (100%), benign FP 0/2 vs 0/2
 Decision: DRAFT_ADMISSION_CAPABILITY
 ```
+
+
+## Executable experiment
+
+`admission_input.py` now verifies the frozen diff bytes and their trusted
+digest, requires exact baseline/candidate fact digests from the deployment
+review, and emits a second content-addressed
+`AuthorityDiffAdmissionInput` artifact.
+
+The output deliberately contains signals but **no ADMIT / DENY / PROMOTE
+decision**. The smoke test also proves a mismatched baseline digest fails closed.
+
+This remains inside `temp-runner`. Promotion still requires an independent
+third validation set as described above.
