@@ -77,6 +77,10 @@ jobs:
           python experiments/effective-authority-diff/run.py             --round 2             --cases artifacts/effective-authority-diff/round-2-cases.json             --out artifacts/effective-authority-diff/round-2
           cat artifacts/effective-authority-diff/round-2/summary.txt
 
+      - name: Validate read-only admission artifact binding
+        run: |
+          python experiments/effective-authority-diff/test_admission_input.py
+
       - name: Add immutable refs
         if: always()
         run: |
