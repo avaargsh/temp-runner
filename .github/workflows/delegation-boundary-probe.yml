@@ -1,0 +1,43 @@
+name: delegation-boundary-probe
+
+on:
+  pull_request:
+    paths:
+      - "experiments/delegation_boundary/**"
+      - ".github/workflows/delegation-boundary-probe.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: delegation-boundary-probe-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  read-only-probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Run self-contained falsification tests
+        run: python -m unittest discover -s experiments/delegation_boundary -p "test_*.py" -v
+      - name: Produce deterministic content-addressed probe
+        run: |
+          python experiments/delegation_boundary/run.py --out artifacts/delegation-boundary/probe.json
+          python experiments/delegation_boundary/run.py --verify artifacts/delegation-boundary/probe.json --sha-file artifacts/delegation-boundary/probe.json.sha256
+      - name: Upload synthetic read-only proof
+        if: always() && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: delegation-boundary-probe
+          path: artifacts/delegation-boundary/
+          if-no-files-found: warn
+          retention-days: 14
