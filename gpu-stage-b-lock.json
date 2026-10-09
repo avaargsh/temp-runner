@@ -3,13 +3,11 @@
   "purpose": "CPU-only, non-production Stage B provider proof; Kueue is sole production provider",
   "gpu_compute_platform": {
     "repository": "avaargsh/gpu-compute-platform",
-    "sha": "16818821a3db0046eefa6b3622e9a65192bc3141",
+    "sha": "22df2d30d21f637d850d0b177fd6ef25059fda05",
     "pr_stack": [
-      55,
-      56,
-      57
+      58
     ],
-    "review_note": "PR #55-57 reviewed Queue default fix from temp-runner run 37918508288; do not promote without exact-new-SHA rerun"
+    "review_note": "PR #58 exact-head live negative-control correction: foreign Controller Job UID vs independently observed UID/RV drift. Merge gated on fresh full CI."
   },
   "volcano": {
     "repository": "volcano-sh/volcano",
