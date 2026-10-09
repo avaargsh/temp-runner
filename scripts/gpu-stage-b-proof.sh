@@ -138,6 +138,23 @@ jq -e --arg pg "$pg" '
   (.metadata.resourceVersion | length > 0) and
   .spec.minMember == 1 and .status.phase == "Running"
 ' "$out/podgroup.json" >/dev/null
+
+# Run the actual new Go observer against this real, UID-bound Kubernetes
+# Job/PodGroup BEFORE our trap deletes the ephemeral namespace. This test has
+# no write verbs and refuses all non-disposable cluster contexts.
+(
+  cd workspace/gpu
+  STAGE_B_LIVE_PODGROUP_CONTEXT="kind-stageb-volcano" \
+  STAGE_B_LIVE_PODGROUP_NAMESPACE="$ns" \
+    go test ./internal/provider/volcano -run '^TestVolcanoLivePodGroupLinkReadOnly
+printf 'gpu_sha\t%s\nvolcano_sha\t%s\nqueue_cas\tPASS\npodgroup_controller_evidence\tPASS\ngpu_hardware\tUNPROVEN\nquota_applied\tUNPROVEN\n' \
+ "$gpu_sha" "$volcano_sha" > "$out/live-result.tsv"
+sha256sum "$out/"*.json > "$out/live-receipts.sha256"
+echo "STAGE B LIVE KIND PROOF: PASS (CPU-only; production promotion unproven)"
+ -count=1 -v
+) 2>&1 | tee "$out/live-podgroup-go-observer.log"
+grep -Fq -- '--- PASS: TestVolcanoLivePodGroupLinkReadOnly' "$out/live-podgroup-go-observer.log"
+grep -Fq 'LIVE_READ_ONLY_PODGROUP_LINK=PASS' "$out/live-podgroup-go-observer.log"
 # No hardware GPU, no digest+cosign production claim, no quota-applied leap.
 printf 'gpu_sha\t%s\nvolcano_sha\t%s\nqueue_cas\tPASS\npodgroup_controller_evidence\tPASS\ngpu_hardware\tUNPROVEN\nquota_applied\tUNPROVEN\n' \
  "$gpu_sha" "$volcano_sha" > "$out/live-result.tsv"
