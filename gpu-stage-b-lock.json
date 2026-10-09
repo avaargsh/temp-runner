@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "purpose": "CPU-only, non-production Stage B provider proof; Kueue is sole production provider",
+  "gpu_compute_platform": {
+    "repository": "avaargsh/gpu-compute-platform",
+    "sha": "16818821a3db0046eefa6b3622e9a65192bc3141",
+    "pr_stack": [
+      55,
+      56,
+      57
+    ],
+    "review_note": "PR #55-57 reviewed Queue default fix from temp-runner run 37918508288; do not promote without exact-new-SHA rerun"
+  },
+  "volcano": {
+    "repository": "volcano-sh/volcano",
+    "release": "v1.15.3",
+    "sha": "d2dd7024f4af3070f9d99d68a78973893908a743",
+    "chart_sha": "e23439ca15e3e2be1de6835c3f3be6bbba79ee57",
+    "queue_crd_blob_sha": "089b7f41daf277800a349edc615ab093c615f135",
+    "queue_crd_spec_sha256": "352bdac8e9e7acf21b6340df26fdc196bdde0147a72157e8449fddb574d9833e",
+    "schema_baseline": {
+      "source": "persisted Kubernetes CRD spec in temp-runner run 37918163882, artifact gpu-stage-b-volcano-live-37918163882",
+      "reviewed_diff": "only server default spec.conversion.strategy=None added to pinned chart source",
+      "source_chart_blob": "089b7f41daf277800a349edc615ab093c615f135",
+      "reviewed_release": "v1.15.3"
+    }
+  }
+}

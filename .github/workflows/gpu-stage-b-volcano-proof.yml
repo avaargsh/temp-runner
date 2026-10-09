@@ -1,0 +1,168 @@
+name: gpu-stage-b-volcano-proof
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/gpu-stage-b-volcano-proof.yml"
+      - "gpu-stage-b-lock.json"
+      - "scripts/gpu-stage-b-proof.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gpu-stage-b-proof-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  race:
+    name: Exact-SHA Volcano provider race and contracts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: gpu
+          POSTGRES_PASSWORD: gpu
+          POSTGRES_DB: gpu_platform_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U gpu -d gpu_platform_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_POSTGRES_DSN: postgres://gpu:gpu@localhost:5432/gpu_platform_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
+      - name: Read audited immutable lock
+        id: pin
+        shell: bash
+        run: |
+          jq -e '.schema_version == 1 and .gpu_compute_platform.sha == "16818821a3db0046eefa6b3622e9a65192bc3141" and .volcano.sha == "d2dd7024f4af3070f9d99d68a78973893908a743"' gpu-stage-b-lock.json
+          echo "gpu_sha=$(jq -r '.gpu_compute_platform.sha' gpu-stage-b-lock.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: avaargsh/gpu-compute-platform
+          ref: ${{ steps.pin.outputs.gpu_sha }}
+          path: workspace/gpu
+          persist-credentials: false
+      - name: Assert exact source checkout and no production registration
+        shell: bash
+        run: |
+          test "$(git -C workspace/gpu rev-parse HEAD)" = "${{ steps.pin.outputs.gpu_sha }}"
+          test "$(grep -c 'KueueProviderName: kueue.NewProvider' workspace/gpu/internal/cluster/runtime.go)" = 1
+          ! grep -Eiq 'volcano\.NewProvider|VolcanoProviderName:' workspace/gpu/internal/cluster/runtime.go
+      - name: Full release contract, race detector and supply-chain policy
+        shell: bash
+        working-directory: workspace/gpu
+        run: |
+          set -euo pipefail
+          mkdir -p ../../artifacts/gpu-stage-b
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          make fmt-check
+          go vet ./...
+          go test -race ./internal/provider/volcano -count=1 -v 2>&1 | tee ../../artifacts/gpu-stage-b/volcano-race.log
+          go test ./... -count=1 2>&1 | tee ../../artifacts/gpu-stage-b/full-tests.log
+          make acceptance-contract
+          make supply-chain-check
+          printf 'gpu_sha=%s\nvolcano_race=PASS\n' "$(git rev-parse HEAD)" > ../../artifacts/gpu-stage-b/race-result.txt
+      - name: Upload race proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-stage-b-race-${{ github.run_id }}
+          path: artifacts/gpu-stage-b/
+          if-no-files-found: warn
+          retention-days: 14
+
+  live-volcano:
+    name: Pinned kind + real Volcano Queue/PodGroup probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: azure/setup-helm@v4
+      - name: Install kind
+        run: |
+          curl -fsSLo /tmp/kind https://kind.sigs.k8s.io/dl/v0.30.0/kind-linux-amd64
+          chmod +x /tmp/kind
+          sudo mv /tmp/kind /usr/local/bin/kind
+      - name: Verify immutable refs
+        id: pin
+        shell: bash
+        run: |
+          jq -e '.schema_version == 1 and .gpu_compute_platform.sha == "16818821a3db0046eefa6b3622e9a65192bc3141" and .volcano.sha == "d2dd7024f4af3070f9d99d68a78973893908a743"' gpu-stage-b-lock.json
+          echo "gpu_sha=$(jq -r '.gpu_compute_platform.sha' gpu-stage-b-lock.json)" >> "$GITHUB_OUTPUT"
+          echo "volcano_sha=$(jq -r '.volcano.sha' gpu-stage-b-lock.json)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: avaargsh/gpu-compute-platform
+          ref: ${{ steps.pin.outputs.gpu_sha }}
+          path: workspace/gpu
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          repository: volcano-sh/volcano
+          ref: ${{ steps.pin.outputs.volcano_sha }}
+          path: workspace/volcano
+          persist-credentials: false
+          sparse-checkout: |
+            installer/helm/chart/volcano
+      - name: Provision disposable kind
+        shell: bash
+        run: |
+          set -euo pipefail
+          kind create cluster --name stageb-volcano --wait 120s
+          kubectl config use-context kind-stageb-volcano
+          mkdir -p artifacts/gpu-stage-b
+          kubectl version -o json > artifacts/gpu-stage-b/kubernetes.json
+          git -C workspace/gpu rev-parse HEAD > artifacts/gpu-stage-b/gpu-sha.txt
+          git -C workspace/volcano rev-parse HEAD > artifacts/gpu-stage-b/volcano-sha.txt
+      - name: Install pinned Volcano 1.15.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C workspace/volcano rev-parse HEAD)" = "${{ steps.pin.outputs.volcano_sha }}"
+          test "$(grep -E '^version:' workspace/volcano/installer/helm/chart/volcano/Chart.yaml | tr -d ' "')" = "version:1.15.3"
+          # Helm's pinned chart renders and owns its CRDs as templates.
+          # Do not pre-apply them: Helm correctly rejects foreign ownership.
+          helm upgrade --install volcano workspace/volcano/installer/helm/chart/volcano \
+            --namespace volcano-system --create-namespace --wait --timeout 9m \
+            --set basic.image_pull_policy=IfNotPresent
+          for resource in queues.scheduling.volcano.sh podgroups.scheduling.volcano.sh jobs.batch.volcano.sh; do
+            kubectl wait --for=condition=Established "crd/$resource" --timeout=120s
+          done
+          kubectl -n volcano-system get deployments -o wide | tee artifacts/gpu-stage-b/volcano-deployments.txt
+          kubectl get crd queues.scheduling.volcano.sh podgroups.scheduling.volcano.sh jobs.batch.volcano.sh
+      - name: Run pinned live Queue CAS and Job-PodGroup proof
+        shell: bash
+        run: bash scripts/gpu-stage-b-proof.sh
+      - name: Capture live diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artifacts/gpu-stage-b
+          kubectl get pods -A -o wide > artifacts/gpu-stage-b/pods-all.txt 2>&1 || true
+          kubectl -n volcano-system get events --sort-by=.lastTimestamp > artifacts/gpu-stage-b/events.txt 2>&1 || true
+          kubectl get crd queues.scheduling.volcano.sh -o json > artifacts/gpu-stage-b/installed-queue-crd.json 2>&1 || true
+          kubectl -n volcano-system get deploy -o yaml > artifacts/gpu-stage-b/volcano-deployments.yaml 2>&1 || true
+      - name: Upload live API and Volcano receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gpu-stage-b-volcano-live-${{ github.run_id }}
+          path: artifacts/gpu-stage-b/
+          if-no-files-found: warn
+          retention-days: 14
