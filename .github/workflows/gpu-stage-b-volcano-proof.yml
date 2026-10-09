@@ -135,7 +135,6 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git -C workspace/volcano rev-parse HEAD)" = "${{ steps.pin.outputs.volcano_sha }}"
-          test "$(yq --version >/dev/null 2>&1; echo $?)" = 0 || true
           test "$(grep -E '^version:' workspace/volcano/installer/helm/chart/volcano/Chart.yaml | tr -d ' "')" = "version:1.15.3"
           helm upgrade --install volcano workspace/volcano/installer/helm/chart/volcano \
             --namespace volcano-system --create-namespace --wait --timeout 9m \
