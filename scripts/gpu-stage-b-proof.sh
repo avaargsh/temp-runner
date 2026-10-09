@@ -16,23 +16,33 @@ test "$(git -C workspace/volcano hash-object "installer/helm/chart/volcano/crd/b
 test "$(kubectl config current-context)" = "kind-stageb-volcano"
 kind get clusters | grep -Fx stageb-volcano
 
-# The expected schema comes from the immutable reviewed chart Git blob, NOT
-# from the live API-server. Never use observed schema as its own baseline.
+# The immutable schema digest was independently reviewed from the
+# *previous* live v1.15.3 kind run #37918163882, not computed from the
+# cluster currently under test. This test never self-blesses observed drift.
+expected_digest="$(jq -r '.volcano.queue_crd_spec_sha256' gpu-stage-b-lock.json)"
+[[ "$expected_digest" =~ ^[0-9a-f]{64}$ ]]
 kubectl create --dry-run=client -f "$chart" -o json \
-  | jq -Se '.spec' > "$out/pinned-source-queue-crd-spec.json"
+  | jq -Se '.spec | if has("conversion") then . else . + {"conversion":{"strategy":"None"}} end' \
+  > "$out/pinned-source-queue-crd-spec.json"
 sha256sum "$out/pinned-source-queue-crd-spec.json" > "$out/pinned-source-queue-crd-spec.sha256"
 kubectl get crd queues.scheduling.volcano.sh -o json \
   | jq -Se '.spec' > "$out/live-queue-crd-spec.json"
 sha256sum "$out/live-queue-crd-spec.json" > "$out/live-queue-crd-spec.sha256"
-# Defaulting/differences must fail closed instead of blessing live drift.
-if ! cmp -s "$out/pinned-source-queue-crd-spec.json" "$out/live-queue-crd-spec.json"; then
+# Only the explicitly reviewed Kubernetes server-added conversion default is
+# normalized; any other difference from the pinned chart or locked digest
+# remains an unconditional failure BEFORE creating a Queue.
+source_digest="$(sha256sum "$out/pinned-source-queue-crd-spec.json")"
+source_digest="${source_digest%% *}"
+live_digest="$(sha256sum "$out/live-queue-crd-spec.json")"
+live_digest="${live_digest%% *}"
+if [[ "$source_digest" != "$expected_digest" ||
+      "$live_digest" != "$expected_digest" ]] ||
+   ! cmp -s "$out/pinned-source-queue-crd-spec.json" "$out/live-queue-crd-spec.json"; then
   diff -u "$out/pinned-source-queue-crd-spec.json" "$out/live-queue-crd-spec.json" \
     > "$out/queue-crd-diff.txt" || true
-  echo 'BLOCKED: installed CRD differs from pinned source; review persisted defaults' >&2
+  echo 'BLOCKED: installed CRD differs from independently locked persisted v1.15.3 schema' >&2
   exit 1
 fi
-expected_digest="$(sha256sum "$out/pinned-source-queue-crd-spec.json")"
-expected_digest="${expected_digest%% *}"
 mkdir -p "$out/queue-cas"
 (
   cd workspace/gpu
