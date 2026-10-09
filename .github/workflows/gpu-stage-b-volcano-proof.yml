@@ -47,7 +47,7 @@ jobs:
         id: pin
         shell: bash
         run: |
-          jq -e '.schema_version == 1 and .gpu_compute_platform.sha == "4fedff2c291095280dd8c7da844307e5e7b78a86" and .volcano.sha == "d2dd7024f4af3070f9d99d68a78973893908a743"' gpu-stage-b-lock.json
+          jq -e '.schema_version == 1 and .gpu_compute_platform.sha == "22df2d30d21f637d850d0b177fd6ef25059fda05" and .volcano.sha == "d2dd7024f4af3070f9d99d68a78973893908a743"' gpu-stage-b-lock.json
           echo "gpu_sha=$(jq -r '.gpu_compute_platform.sha' gpu-stage-b-lock.json)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
@@ -106,7 +106,7 @@ jobs:
         id: pin
         shell: bash
         run: |
-          jq -e '.schema_version == 1 and .gpu_compute_platform.sha == "4fedff2c291095280dd8c7da844307e5e7b78a86" and .volcano.sha == "d2dd7024f4af3070f9d99d68a78973893908a743"' gpu-stage-b-lock.json
+          jq -e '.schema_version == 1 and .gpu_compute_platform.sha == "22df2d30d21f637d850d0b177fd6ef25059fda05" and .volcano.sha == "d2dd7024f4af3070f9d99d68a78973893908a743"' gpu-stage-b-lock.json
           echo "gpu_sha=$(jq -r '.gpu_compute_platform.sha' gpu-stage-b-lock.json)" >> "$GITHUB_OUTPUT"
           echo "volcano_sha=$(jq -r '.volcano.sha' gpu-stage-b-lock.json)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
