@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "purpose": "CPU-only, non-production Stage B provider proof; Kueue is sole production provider",
+  "gpu_compute_platform": {
+    "repository": "avaargsh/gpu-compute-platform",
+    "sha": "fa56e2fffde2d27da92745a4467801f9b1832df1",
+    "pr_stack": [
+      55,
+      56,
+      57
+    ]
+  },
+  "volcano": {
+    "repository": "volcano-sh/volcano",
+    "release": "v1.15.3",
+    "sha": "d2dd7024f4af3070f9d99d68a78973893908a743",
+    "chart_sha": "e23439ca15e3e2be1de6835c3f3be6bbba79ee57",
+    "queue_crd_blob_sha": "089b7f41daf277800a349edc615ab093c615f135"
+  }
+}
