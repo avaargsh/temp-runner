@@ -3,11 +3,11 @@
   "purpose": "CPU-only, non-production Stage B provider proof; Kueue is sole production provider",
   "gpu_compute_platform": {
     "repository": "avaargsh/gpu-compute-platform",
-    "sha": "4fedff2c291095280dd8c7da844307e5e7b78a86",
+    "sha": "22df2d30d21f637d850d0b177fd6ef25059fda05",
     "pr_stack": [
       58
     ],
-    "review_note": "Read-only PodGroupLinked follow-up to merged #55-57; verify exact SHA with live Go observer and Kueue CI; not production-admitted"
+    "review_note": "PR #58 exact-head live negative-control correction: foreign Controller Job UID vs independently observed UID/RV drift. Merge gated on fresh full CI."
   },
   "volcano": {
     "repository": "volcano-sh/volcano",
