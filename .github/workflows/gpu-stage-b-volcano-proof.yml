@@ -136,6 +136,14 @@ jobs:
           set -euo pipefail
           test "$(git -C workspace/volcano rev-parse HEAD)" = "${{ steps.pin.outputs.volcano_sha }}"
           test "$(grep -E '^version:' workspace/volcano/installer/helm/chart/volcano/Chart.yaml | tr -d ' "')" = "version:1.15.3"
+          # The checked-out upstream chart keeps CRD YAML under crd/bases
+          # rather than Helm's implicit crds/ directory. Install the exact
+          # pinned source before Helm; never fetch mutable install manifests.
+          kubectl apply --server-side -f workspace/volcano/installer/helm/chart/volcano/crd/bases/
+          kubectl apply --server-side -f workspace/volcano/installer/helm/chart/volcano/charts/jobflow/crd/bases/
+          for resource in queues.scheduling.volcano.sh podgroups.scheduling.volcano.sh jobs.batch.volcano.sh; do
+            kubectl wait --for=condition=Established "crd/$resource" --timeout=120s
+          done
           helm upgrade --install volcano workspace/volcano/installer/helm/chart/volcano \
             --namespace volcano-system --create-namespace --wait --timeout 9m \
             --set basic.image_pull_policy=IfNotPresent
