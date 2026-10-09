@@ -3,12 +3,13 @@
   "purpose": "CPU-only, non-production Stage B provider proof; Kueue is sole production provider",
   "gpu_compute_platform": {
     "repository": "avaargsh/gpu-compute-platform",
-    "sha": "fa56e2fffde2d27da92745a4467801f9b1832df1",
+    "sha": "16818821a3db0046eefa6b3622e9a65192bc3141",
     "pr_stack": [
       55,
       56,
       57
-    ]
+    ],
+    "review_note": "PR #55-57 reviewed Queue default fix from temp-runner run 37918508288; do not promote without exact-new-SHA rerun"
   },
   "volcano": {
     "repository": "volcano-sh/volcano",
