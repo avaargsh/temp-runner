@@ -47,7 +47,7 @@ jobs:
         id: pin
         shell: bash
         run: |
-          jq -e '.schema_version == 1 and .gpu_compute_platform.sha == "16818821a3db0046eefa6b3622e9a65192bc3141" and .volcano.sha == "d2dd7024f4af3070f9d99d68a78973893908a743"' gpu-stage-b-lock.json
+          jq -e '.schema_version == 1 and .gpu_compute_platform.sha == "4fedff2c291095280dd8c7da844307e5e7b78a86" and .volcano.sha == "d2dd7024f4af3070f9d99d68a78973893908a743"' gpu-stage-b-lock.json
           echo "gpu_sha=$(jq -r '.gpu_compute_platform.sha' gpu-stage-b-lock.json)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
@@ -88,11 +88,14 @@ jobs:
   live-volcano:
     name: Pinned kind + real Volcano Queue/PodGroup probe
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.x"
       - uses: azure/setup-helm@v4
       - name: Install kind
         run: |
@@ -103,7 +106,7 @@ jobs:
         id: pin
         shell: bash
         run: |
-          jq -e '.schema_version == 1 and .gpu_compute_platform.sha == "16818821a3db0046eefa6b3622e9a65192bc3141" and .volcano.sha == "d2dd7024f4af3070f9d99d68a78973893908a743"' gpu-stage-b-lock.json
+          jq -e '.schema_version == 1 and .gpu_compute_platform.sha == "4fedff2c291095280dd8c7da844307e5e7b78a86" and .volcano.sha == "d2dd7024f4af3070f9d99d68a78973893908a743"' gpu-stage-b-lock.json
           echo "gpu_sha=$(jq -r '.gpu_compute_platform.sha' gpu-stage-b-lock.json)" >> "$GITHUB_OUTPUT"
           echo "volcano_sha=$(jq -r '.volcano.sha' gpu-stage-b-lock.json)" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
