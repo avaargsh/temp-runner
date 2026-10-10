@@ -3,11 +3,11 @@
   "purpose": "CPU-only, non-production Stage B provider proof; Kueue is sole production provider",
   "gpu_compute_platform": {
     "repository": "avaargsh/gpu-compute-platform",
-    "sha": "22df2d30d21f637d850d0b177fd6ef25059fda05",
+    "sha": "3b0a87d065462d2f980ffe665290df8200f91a7f",
     "pr_stack": [
-      58
+      59
     ],
-    "review_note": "PR #58 exact-head live negative-control correction: foreign Controller Job UID vs independently observed UID/RV drift. Merge gated on fresh full CI."
+    "review_note": "Queue CAS proof runner bounded GET+UID/RV retry for incidental controller 409; no production adapter/QuotaApplied changes. Require exact HEAD CI."
   },
   "volcano": {
     "repository": "volcano-sh/volcano",
