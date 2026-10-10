@@ -51,8 +51,8 @@
   unschedulable_true_conditions: $unschedulable,
   signal_status: (if $observed then "OBSERVED" else "UNPROVEN" end),
   signal_reason: (
-    if not $stable then "PodGroupReadbackDrift"
-    elif not $owned then "PodGroupOwnershipUnproven"
+    if ($stable | not) then "PodGroupReadbackDrift"
+    elif ($owned | not) then "PodGroupOwnershipUnproven"
     elif $b.status.phase != "Running" then "PodGroupNotRunning"
     elif ($scheduled | length) != 1 or $scheduled[0].status != "True" then "ScheduledConditionUnproven"
     elif ($unschedulable | length) > 0 then "ConflictingUnschedulableCondition"
