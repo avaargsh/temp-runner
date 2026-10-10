@@ -149,8 +149,14 @@ jq -e --arg pg "$pg" '
 ) 2>&1 | tee "$out/live-podgroup-go-observer.log"
 grep -Fq -- '--- PASS: TestVolcanoLivePodGroupLinkReadOnly' "$out/live-podgroup-go-observer.log"
 grep -Fq 'LIVE_READ_ONLY_PODGROUP_LINK=PASS' "$out/live-podgroup-go-observer.log"
+
+# New read-only scheduler-status receipt. This records a versioned status
+# signal and cannot promote Job Ready, scheduler quota or GPU execution.
+bash scripts/volcano-scheduler-signal.sh "$ns" "$pg" "$job_uid" "$out"
+jq -e '.signal_status == "OBSERVED" or .signal_status == "UNPROVEN"' \
+  "$out/scheduler-signal.json" >/dev/null
 # No hardware GPU, no digest+cosign production claim, no quota-applied leap.
-printf 'gpu_sha\t%s\nvolcano_sha\t%s\nqueue_cas\tPASS\npodgroup_controller_evidence\tPASS\npodgroup_go_observer\tPASS\ngpu_hardware\tUNPROVEN\nquota_applied\tUNPROVEN\n' \
+printf 'gpu_sha\t%s\nvolcano_sha\t%s\nqueue_cas\tPASS\npodgroup_controller_evidence\tPASS\npodgroup_go_observer\tPASS\nscheduler_signal_receipt\tPASS\ngpu_hardware\tUNPROVEN\nquota_applied\tUNPROVEN\n' \
  "$gpu_sha" "$volcano_sha" > "$out/live-result.tsv"
 sha256sum "$out/"*.json > "$out/live-receipts.sha256"
 echo "STAGE B LIVE KIND PROOF: PASS (CPU-only; production promotion unproven)"
