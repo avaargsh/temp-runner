@@ -58,6 +58,16 @@ jobs:
           ref: ${{ steps.stack-lock.outputs.control_plane_ref }}
           path: workspace/agent-control-plane
 
+      - name: Falsify checkout SHA gate on disposable synthetic repositories
+        run: python -m unittest discover -s scripts -p 'test_verify_checked_out_sources.py' -v
+
+      - name: Verify locked checkout SHAs before starting services
+        run: |
+          python scripts/verify_checked_out_sources.py \
+            --lock stack-lock.json \
+            --workspace workspace \
+            --output artifacts/source-checkouts.json
+
       - name: Install kind
         uses: helm/kind-action@v1
         with:

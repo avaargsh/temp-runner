@@ -50,7 +50,7 @@ The P0 baseline is intentionally narrow and frozen:
 - the Agent Control Plane EvalGate must pass before the run is accepted as release-promotable;
 - diagnostics, metrics, and gate evidence are retained as Actions artifacts.
 
-The `golden-e2e` workflow runs on pull requests and pushes to `main`, in addition to manual dispatch. New features must not weaken or bypass this baseline.
+The `golden-e2e` workflow runs on pull requests targeting `main`, a weekly schedule, and manual dispatch (there is no push-to-main trigger). Before starting kind or services, it now verifies that all four checked-out Git commits equal the immutable lock and retains `artifacts/source-checkouts.json` as evidence. New features must not weaken or bypass this baseline.
 
 All four locked source repositories are currently public, so the normal GitHub token is sufficient. `AGENT_STACK_GITHUB_TOKEN` is only needed if a future locked source repository is private; when used, keep it read-only and scoped to the required repositories.
 
