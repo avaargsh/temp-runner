@@ -58,6 +58,38 @@ jobs:
           ref: ${{ steps.stack-lock.outputs.control_plane_ref }}
           path: workspace/agent-control-plane
 
+      - name: Verify locked checkout SHAs before starting services
+        run: |
+          python - <<'PY'
+          import json
+          import pathlib
+          import subprocess
+
+          lock = json.loads(pathlib.Path('stack-lock.json').read_text(encoding='utf-8'))
+          names = ('agentic-aiops', 'agent-decision-lab', 'cloud-agent-runtime', 'agent-control-plane')
+          rows = []
+          for name in names:
+              entry = lock['repositories'][name]
+              observed = subprocess.check_output(
+                  ['git', '-C', f'workspace/{name}', 'rev-parse', 'HEAD'],
+                  text=True,
+              ).strip()
+              rows.append({
+                  'repository': entry['repository'],
+                  'locked_sha': entry['sha'],
+                  'observed_sha': observed,
+                  'matches': observed == entry['sha'],
+              })
+          out = pathlib.Path('artifacts/source-checkouts.json')
+          out.parent.mkdir(parents=True, exist_ok=True)
+          out.write_text(json.dumps({
+              'schema_version': 1, 'kind': 'LockedSourceCheckoutObservation',
+              'sources': rows,
+          }, sort_keys=True, indent=2) + '\n', encoding='utf-8')
+          if not all(row['matches'] for row in rows):
+              raise SystemExit('checked-out source SHA differs from immutable stack-lock.json')
+          print('all four source checkouts match immutable locked SHAs')
+          PY
       - name: Install kind
         uses: helm/kind-action@v1
         with:
