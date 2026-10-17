@@ -1,8 +1,8 @@
 name: golden-e2e
 
 on:
-  pull_request:
-    branches: [main]
+  # Cross-repository Temporal+kind Golden Path is a TEST/RELEASE scenario,
+  # not a prerequisite for every runner-only development PR.
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
