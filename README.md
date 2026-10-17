@@ -61,3 +61,13 @@ The Golden Stack is defined by [`stack-lock.json`](stack-lock.json). The E2E
 workflow validates that lock and checks out those exact source commits before
 running the incident. Updating the accepted stack is therefore a reviewed
 lock-file change rather than an implicit move of a `main` branch.
+
+
+## Development and integration checks
+
+Normal PRs continue to run the focused Authority Diff / recovery regression
+workflows. The multi-repository kind/Temporal `golden-e2e` suite runs on its
+weekly schedule or via `workflow_dispatch` for integrated TEST/RELEASE
+review; it no longer blocks unrelated runner development. A simulated Golden
+Path is never represented as actual GPU or production acceptance. Failure
+paths, owner fencing and idempotency must remain fail-closed even in DEV.
