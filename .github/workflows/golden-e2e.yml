@@ -6,6 +6,10 @@ on:
   schedule:
     - cron: "17 3 * * 1"
   workflow_dispatch:
+  # An immutable stack-lock change needs the complete cross-repository proof.
+  pull_request:
+    paths:
+      - "stack-lock.json"
 
 permissions:
   contents: read
@@ -290,7 +294,6 @@ jobs:
           # BLOCK is the semantic invariant. Record the current CLI exit-code
           # contract without coupling this system proof to it.
           printf '%s\n' "$OPERATION_GATE_RC" > /tmp/operation-gate.exitcode
-
 
           # Negative control: correctly sealed evidence from another admitted
           # authority identity must not promote this release.
