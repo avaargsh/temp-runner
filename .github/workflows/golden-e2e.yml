@@ -291,6 +291,8 @@ jobs:
           set -e
           grep -q '"decision": "BLOCK"' /tmp/operation-gate.json
           grep -q '"reason": "OPERATION_NOT_VERIFIED"' /tmp/operation-gate.json
+          # BLOCK is the semantic invariant. Record the current CLI exit-code
+          # contract without coupling this system proof to it.
           printf '%s\n' "$OPERATION_GATE_RC" > /tmp/operation-gate.exitcode
 
           # Negative control: correctly sealed evidence from another admitted
