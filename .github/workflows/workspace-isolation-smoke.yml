@@ -1,0 +1,41 @@
+name: workspace-isolation-smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "experiments/workspace-isolation/**"
+      - "docs/workspace-isolation-experiment.md"
+      - ".github/workflows/workspace-isolation-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workspace-isolation-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  worktree-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout runner
+        uses: actions/checkout@v4
+
+      - name: Record immutable runner SHA
+        run: |
+          mkdir -p artifacts/workspace-isolation
+          git rev-parse HEAD > artifacts/workspace-isolation/runner-sha.txt
+
+      - name: Run disposable worktree isolation experiment
+        run: python experiments/workspace-isolation/run.py --out artifacts/workspace-isolation
+
+      - name: Upload experiment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: workspace-isolation-${{ github.run_id }}
+          path: artifacts/workspace-isolation/
+          retention-days: 14
